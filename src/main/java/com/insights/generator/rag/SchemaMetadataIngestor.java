@@ -25,34 +25,32 @@ public class SchemaMetadataIngestor {
     public void ingestSchemaMetadata() {
         logger.info("Initializing 5G Schema Metadata in Vector Store...");
 
-        // In a real scenario, this could be read from a JSON or Markdown file
-//        String networkDataSchema = """
-//            Table: network_metrics
-//            Description: Contains hourly aggregated 5G network performance data.
-//            Columns:
-//            - timestamp (TIMESTAMP): The time the metric was recorded.
-//            - region_id (VARCHAR): The geographic region code (e.g., 'North', 'South').
-//            - cell_id (VARCHAR): The unique identifier for the 5G cell tower.
-//            - avg_latency_ms (NUMERIC): The average network latency in milliseconds.
-//            - download_speed_mbps (NUMERIC): Average download throughput.
-//            - upload_speed_mbps (NUMERIC): Average upload throughput.
-//            - packet_loss_pct (NUMERIC): Percentage of packet loss.
-//            - active_users (INTEGER): Number of connected user equipments (UEs).
-//            """;
-
+        // The "Brain" of your RAG - providing schema, regions, and the 2024 time constraint.
         String networkDataSchema = """
-    Table: network_metrics
-    Description: Contains performance metrics for the 5G network across various regions.
-    Columns:
-    - timestamp (TIMESTAMP): The date and time when the metrics were recorded.
-    - region_id (VARCHAR): The name of the city or region (e.g., 'Berlin', 'Delhi', 'Kolkata').
-    - cell_id (VARCHAR): The unique identifier for the specific cell tower or device model.
-    - avg_latency_ms (NUMERIC): The average network delay in milliseconds. Use this for questions about 'latency', 'ping', or 'delay'.
-    - download_speed_mbps (NUMERIC): Average download throughput in Megabits per second.
-    - upload_speed_mbps (NUMERIC): Average upload throughput in Megabits per second.
-    - packet_loss_pct (NUMERIC): Percentage of data packets lost during transmission. Use this as a proxy for 'churn', 'stability', or 'quality' issues.
-    - active_users (INTEGER): Total number of users connected to the cell at that time.
-    """;
+            Table: network_metrics
+            Description: Comprehensive performance metrics for the 5G network. 
+            
+            DATA RELEVANCE CONSTRAINTS:
+            - ALL DATA IS FROM JUNE 2024. 
+            - If a user asks for 'today', 'this month', or 'current data', you MUST query for JUNE 2024.
+            
+            AVAILABLE REGIONS (Values in 'region_id' column): 
+            Mumbai, Kolkata, New York, Delhi, Chennai, Tokyo, San Francisco, Berlin.
+            
+            Columns:
+            - timestamp (TIMESTAMP): Recorded time (Data exists only for 2024-06).
+            - region_id (VARCHAR): City name. Use ONLY from the AVAILABLE REGIONS list.
+            - cell_id (VARCHAR): Tower/Device identifier.
+            - avg_latency_ms (NUMERIC): Network delay.
+            - download_speed_mbps (NUMERIC): Downlink speed.
+            - upload_speed_mbps (NUMERIC): Uplink speed.
+            - packet_loss_pct (NUMERIC): Packet loss. Use as primary metric for 'CHURN' or 'STABILITY'.
+            - active_users (INTEGER): User count.
+            
+            FALLBACK RULE:
+            If a user asks for a region NOT in the list (e.g., Andhra Pradesh), return a SQL query that selects the missing status:
+            SELECT 'Region not found. Please choose from: Mumbai, Kolkata, New York, Delhi, Chennai, Tokyo, San Francisco, Berlin' AS status;
+            """;
 
         Document schemaDoc = new Document(networkDataSchema, Map.of(
                 "type", "schema",
@@ -60,8 +58,8 @@ public class SchemaMetadataIngestor {
                 "table", "network_metrics"
         ));
 
-        // Add to pgvector
+        // Add to pgvector store
         vectorStore.add(List.of(schemaDoc));
-        logger.info("Schema metadata ingested successfully.");
+        logger.info("Schema metadata with 2024 time-context and region constraints ingested successfully.");
     }
 }
