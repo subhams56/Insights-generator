@@ -1,10 +1,11 @@
 package com.insights.generator.agent;
 
+import com.insights.generator.model.QueryLog;
+import com.insights.generator.repository.QueryLogRepository;
 import com.insights.generator.repository.SafeSqlExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -21,20 +22,7 @@ public class NLQAgent {
     private final ChatClient chatClient;
     private final VectorStore vectorStore;
     private final SafeSqlExecutor sqlExecutor;
-
-//    private final String SYSTEM_PROMPT = """
-//        You are an expert PostgreSQL database architect analyzing telecom 5G data.
-//        Your task is to convert the user's natural language question into a valid, safe PostgreSQL SELECT query.
-//
-//        CRITICAL RULES:
-//        1. ONLY output the raw SQL query. Do not include markdown formatting (like ```sql).
-//        2. Do not include any explanations or conversational text.
-//        3. ONLY use the tables and columns provided in the Schema Context.
-//        4. NEVER generate INSERT, UPDATE, DELETE, or DROP statements.
-//
-//        Schema Context:
-//        {schema_context}
-//        """;
+    private final QueryLogRepository logRepository;
 
     private final String SYSTEM_PROMPT = """
     You are a PostgreSQL expert for a 5G Telecom dataset.
@@ -46,67 +34,67 @@ public class NLQAgent {
     1. The dataset contains HISTORICAL data from JUNE 2024. If the user asks for 'this month' or 'now', use '2024-06-01' as the reference point.
     2. ALWAYS return a valid SQL SELECT statement.
     3. Use COALESCE(metric, 0) to avoid nulls.
+    4. Only return the SQL code, no explanations.
     """;
 
-    public NLQAgent(ChatClient.Builder chatClientBuilder, VectorStore vectorStore, SafeSqlExecutor sqlExecutor) {
+    public NLQAgent(ChatClient.Builder chatClientBuilder, VectorStore vectorStore, SafeSqlExecutor sqlExecutor, QueryLogRepository logRepository) {
         this.chatClient = chatClientBuilder.build();
         this.vectorStore = vectorStore;
         this.sqlExecutor = sqlExecutor;
+        this.logRepository = logRepository;
     }
 
     public Object processQuestion(String userQuestion) {
-        // 1. Retrieve Schema Metadata (RAG) using the new Builder pattern
+        // 1. Retrieve Schema Metadata (RAG)
         List<Document> similarDocuments = vectorStore.similaritySearch(
-                SearchRequest.builder() // Use builder instead of constructor
+                SearchRequest.builder()
                         .query(userQuestion)
                         .topK(2)
                         .build()
         );
 
-        // 2. Extract content using getText() instead of getContent()
         String schemaContext = similarDocuments.stream()
-                .map(Document::getText) // Method name changed in M4
+                .map(Document::getText)
                 .collect(Collectors.joining("\n"));
 
-        // 3. Generate SQL using ChatClient
-        PromptTemplate promptTemplate = new PromptTemplate(SYSTEM_PROMPT);
-        String systemMessage = promptTemplate.create(Map.of("schema_context", schemaContext)).getContents();
-
         logger.info("Generating SQL for question: {}", userQuestion);
+
+        // 2. Generate SQL using ChatClient with system/user prompt
         String generatedSql = chatClient.prompt()
-                .system(systemMessage)
+                .system(sp -> sp.text(SYSTEM_PROMPT).param("schema_context", schemaContext))
                 .user(userQuestion)
                 .call()
                 .content();
 
-        // Clean up LLM output in case it ignored the "no markdown" rule
+        // Clean markdown backticks
         generatedSql = cleanSqlOutput(generatedSql);
 
-        // 3. Execute the SQL
+        // 3. Execute and Log
         try {
             List<Map<String, Object>> queryResults = sqlExecutor.executeReadOnlyQuery(generatedSql);
+
+            // Convert results to string for the log table
+            String responseData = queryResults.isEmpty() ? "No results found" : queryResults.toString();
+
+            // FIX: Use userQuestion (the parameter name)
+            logRepository.save(new QueryLog(userQuestion, responseData));
+
             return queryResults;
 
-            // Note: For a true executive view, you could make a *second* ChatClient call here
-            // passing the 'queryResults' back to the LLM to generate a natural language summary
-            // of the data (e.g., "The average latency for Region A is 12ms.")
-
         } catch (Exception e) {
+            String errorMessage = "Error: " + e.getMessage();
+            logRepository.save(new QueryLog(userQuestion, errorMessage));
+
             logger.error("Failed to execute GenAI query", e);
-            return Map.of("error", "Unable to retrieve data: " + e.getMessage(), "attempted_sql", generatedSql);
+            return Map.of(
+                    "error", errorMessage,
+                    "attempted_sql", generatedSql
+            );
         }
     }
 
     private String cleanSqlOutput(String sql) {
-        if (sql.startsWith("```sql")) {
-            sql = sql.substring(6);
-        }
-        if (sql.startsWith("```")) {
-            sql = sql.substring(3);
-        }
-        if (sql.endsWith("```")) {
-            sql = sql.substring(0, sql.length() - 3);
-        }
-        return sql.trim();
+        if (sql == null) return "";
+        return sql.replaceAll("```sql|```", "").trim();
     }
 }
