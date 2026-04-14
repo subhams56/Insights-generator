@@ -66,28 +66,31 @@
 			<artifactId>spring-boot-starter-data-jpa</artifactId>
 		</dependency>
 
-<!--		<dependency>-->
-<!--			<groupId>org.springframework.ai</groupId>-->
-<!--			<artifactId>spring-ai-transformers-starter</artifactId>-->
-<!--		</dependency>-->
-<!--		<dependency>-->
-<!--			<groupId>org.springframework.ai</groupId>-->
-<!--			<artifactId>spring-ai-pgvector-store-starter</artifactId>-->
-<!--		</dependency>-->
-<!--		<dependency>-->
-<!--			<groupId>org.springframework.ai</groupId>-->
-<!--			<artifactId>spring-ai-spring-boot-starter</artifactId>-->
-<!--		</dependency>-->
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-google-genai</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.ai</groupId>
+			<artifactId>spring-ai-starter-model-google-genai-embedding</artifactId>
+		</dependency>
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-docker-compose</artifactId>
 			<optional>true</optional>
 		</dependency>
-<!--		<dependency>-->
-<!--			<groupId>org.springframework.boot</groupId>-->
-<!--			<artifactId>spring-boot-starter-jdbc</artifactId>-->
-<!--		</dependency>-->
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<version>1.10.0</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
