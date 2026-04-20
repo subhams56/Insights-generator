@@ -14,21 +14,24 @@ public class QueryLog {
     private String question;
 
     @Column(columnDefinition = "TEXT")
-    private String response;
+    private String response; // This stores the NL "Answer"
+
+    @Column(columnDefinition = "TEXT")
+    private String rawData; // This stores the JSON results string
 
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    // Default constructor for Hibernate
     public QueryLog() {}
 
-    public QueryLog(String question, String response) {
+    public QueryLog(String question, String response, String rawData) {
         this.question = question;
         this.response = response;
+        this.rawData = rawData;
     }
 
-    // JACKSON NEEDS THESE TO SEE THE DATA:
     public Long getId() { return id; }
     public String getQuestion() { return question; }
     public String getResponse() { return response; }
+    public String getRawData() { return rawData; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 }

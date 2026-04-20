@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -74,68 +75,84 @@ public class NLQAgent {
 
         logger.info("Generating SQL for question: {}", userQuestion);
 
-        // 2. Generate SQL using ChatClient with system/user prompt
-        String generatedSql = chatClient.prompt()
-                .system(sp -> sp.text(SYSTEM_PROMPT).param("schema_context", schemaContext))
-                .user(userQuestion)
-                .call()
-                .content();
-
-        // Clean markdown backticks
-        generatedSql = cleanSqlOutput(generatedSql);
-        logger.info("Generated SQL for Execution: \n---\n{}\n---", generatedSql);
-
-        // 3. Execute and Log
         try {
+            // 2. Generate SQL using ChatClient with system/user prompt
+            String generatedSql = chatClient.prompt()
+                    .system(sp -> sp.text(SYSTEM_PROMPT).param("schema_context", schemaContext))
+                    .user(userQuestion)
+                    .call()
+                    .content();
+
+            // Clean markdown backticks
+            generatedSql = cleanSqlOutput(generatedSql);
+            logger.info("Generated SQL for Execution: \n---\n{}\n---", generatedSql);
+
+            // 3. Execute Query
             List<Map<String, Object>> queryResults = sqlExecutor.executeReadOnlyQuery(generatedSql);
-
-            // Convert results to string for the log table
-            String responseData = queryResults.isEmpty() ? "No results found" : queryResults.toString();
-
-            // FIX: Use userQuestion (the parameter name)
-//            logRepository.save(new QueryLog(userQuestion, responseData));
-
             return queryResults;
 
         } catch (Exception e) {
-            String errorMessage = "Error: " + e.getMessage();
-//            logRepository.save(new QueryLog(userQuestion, errorMessage));
+            // Handle Quota (429) or other API/SQL issues gracefully
+            String errorMessage = e.getMessage();
+            logger.error("Error in SQL generation/execution flow: {}", errorMessage);
 
-            logger.error("Failed to execute GenAI query", e);
             return Map.of(
-                    "error", errorMessage,
-                    "attempted_sql", generatedSql
+                    "error", "SERVICE_INTERRUPTION",
+                    "details", errorMessage.contains("429") ? "AI Quota exceeded. Please wait a moment." : errorMessage
             );
         }
     }
 
     public Map<String, Object> processQuestionV2(String userQuestion) {
+        // 1. CHECK PERSISTENT LOG CACHE
+        Optional<QueryLog> cachedEntry = logRepository.findFirstByQuestionOrderByCreatedAtDesc(userQuestion);
+
+        if (cachedEntry.isPresent()) {
+            logger.info("Cache HIT: Returning stored results for: {}", userQuestion);
+            return Map.of(
+                    "answer", cachedEntry.get().getResponse(),
+                    "raw_data", cachedEntry.get().getRawData(),
+                    "source", "CACHE"
+            );
+        }
+
         Object rawResponse = processQuestion(userQuestion);
 
-        // If there was an error in the first step, return it immediately
+        // If the inner processQuestion returned an error map, return it immediately
         if (rawResponse instanceof Map && ((Map<?, ?>) rawResponse).containsKey("error")) {
             return (Map<String, Object>) rawResponse;
         }
 
-        // Convert raw results to string for the LLM
-        String dataString = rawResponse.toString();
+        try {
+            // Convert raw results to string for the LLM
+            String dataString = rawResponse.toString();
 
-        // Call LLM for the second time to "Refine" the data into English
-        String refinedAnswer = chatClient.prompt()
-                .system(sp -> sp.text(REFINER_PROMPT)
-                        .param("user_question", userQuestion)
-                        .param("raw_data", dataString))
-                .user("Please summarize the findings.")
-                .call()
-                .content();
+            // 2. Call LLM for the second time to "Refine" the data into English
+            String refinedAnswer = chatClient.prompt()
+                    .system(sp -> sp.text(REFINER_PROMPT)
+                            .param("user_question", userQuestion)
+                            .param("raw_data", dataString))
+                    .user("Please summarize the findings.")
+                    .call()
+                    .content();
 
-        logRepository.save(new QueryLog(userQuestion, refinedAnswer));
+            // 3. Save successful interaction to log
+            logRepository.save(new QueryLog(userQuestion, refinedAnswer, rawResponse.toString()));
 
-        // Return a structured response containing both the insight and the proof (data)
-        return Map.of(
-                "answer", refinedAnswer,
-                "raw_data", rawResponse
-        );
+            return Map.of(
+                    "answer", refinedAnswer,
+                    "raw_data", rawResponse,
+                    "source", "LLM-RAG"
+            );
+
+        } catch (Exception e) {
+            logger.error("Refiner LLM Call Failed: {}", e.getMessage());
+            return Map.of(
+                    "error", "REFINER_UNAVAILABLE",
+                    "raw_data", rawResponse,
+                    "details", "Could not generate human-readable summary, but raw data is available."
+            );
+        }
     }
 
     private String cleanSqlOutput(String sql) {
