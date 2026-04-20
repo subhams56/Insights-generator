@@ -93,13 +93,13 @@ public class NLQAgent {
             String responseData = queryResults.isEmpty() ? "No results found" : queryResults.toString();
 
             // FIX: Use userQuestion (the parameter name)
-            logRepository.save(new QueryLog(userQuestion, responseData));
+//            logRepository.save(new QueryLog(userQuestion, responseData));
 
             return queryResults;
 
         } catch (Exception e) {
             String errorMessage = "Error: " + e.getMessage();
-            logRepository.save(new QueryLog(userQuestion, errorMessage));
+//            logRepository.save(new QueryLog(userQuestion, errorMessage));
 
             logger.error("Failed to execute GenAI query", e);
             return Map.of(
@@ -128,6 +128,8 @@ public class NLQAgent {
                 .user("Please summarize the findings.")
                 .call()
                 .content();
+
+        logRepository.save(new QueryLog(userQuestion, refinedAnswer));
 
         // Return a structured response containing both the insight and the proof (data)
         return Map.of(
