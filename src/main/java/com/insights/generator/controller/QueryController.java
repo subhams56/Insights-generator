@@ -30,6 +30,11 @@ public class QueryController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/askV2")
+    public ResponseEntity<Object> askQuestionV2(@RequestParam String query) {
+        return ResponseEntity.ok(nlqAgent.processQuestionV2(query));
+    }
+
     @GetMapping("/history")
     public ResponseEntity<List<QueryLog>> getQueryHistory() {
         // Returns all questions and answers, newest first

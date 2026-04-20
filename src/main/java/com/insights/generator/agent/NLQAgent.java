@@ -37,6 +37,21 @@ public class NLQAgent {
     4. Only return the SQL code, no explanations.
     """;
 
+    private final String REFINER_PROMPT = """
+    You are a professional 5G Telecom Data Analyst. 
+    You are presented with a User's Question and the Result of a database query specifically designed to answer that question.
+    
+    USER QUESTION: {user_question}
+    DATABASE RESULT: {raw_data}
+    
+    INSTRUCTIONS:
+    1. Interpret the DATABASE RESULT as the direct answer to the USER QUESTION. 
+    2. If the result contains a single value (like 'Berlin'), state it clearly as the answer (e.g., 'Berlin has the lowest packet loss').
+    3. Do not apologize for 'only' having one region; that region is the result of the filtering logic.
+    4. If the DATABASE RESULT is empty or null, explain that no data matches the criteria for the period of June 2024.
+    5. Be confident, concise, and professional.
+    """;
+
     public NLQAgent(ChatClient.Builder chatClientBuilder, VectorStore vectorStore, SafeSqlExecutor sqlExecutor, QueryLogRepository logRepository) {
         this.chatClient = chatClientBuilder.build();
         this.vectorStore = vectorStore;
@@ -68,6 +83,7 @@ public class NLQAgent {
 
         // Clean markdown backticks
         generatedSql = cleanSqlOutput(generatedSql);
+        logger.info("Generated SQL for Execution: \n---\n{}\n---", generatedSql);
 
         // 3. Execute and Log
         try {
@@ -91,6 +107,33 @@ public class NLQAgent {
                     "attempted_sql", generatedSql
             );
         }
+    }
+
+    public Map<String, Object> processQuestionV2(String userQuestion) {
+        Object rawResponse = processQuestion(userQuestion);
+
+        // If there was an error in the first step, return it immediately
+        if (rawResponse instanceof Map && ((Map<?, ?>) rawResponse).containsKey("error")) {
+            return (Map<String, Object>) rawResponse;
+        }
+
+        // Convert raw results to string for the LLM
+        String dataString = rawResponse.toString();
+
+        // Call LLM for the second time to "Refine" the data into English
+        String refinedAnswer = chatClient.prompt()
+                .system(sp -> sp.text(REFINER_PROMPT)
+                        .param("user_question", userQuestion)
+                        .param("raw_data", dataString))
+                .user("Please summarize the findings.")
+                .call()
+                .content();
+
+        // Return a structured response containing both the insight and the proof (data)
+        return Map.of(
+                "answer", refinedAnswer,
+                "raw_data", rawResponse
+        );
     }
 
     private String cleanSqlOutput(String sql) {
