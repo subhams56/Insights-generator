@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ public class NLQAgent {
     private final VectorStore vectorStore;
     private final SafeSqlExecutor sqlExecutor;
     private final QueryLogRepository logRepository;
+
 
     private final String SYSTEM_PROMPT = """
     You are a PostgreSQL expert for a 5G Telecom dataset.
@@ -53,12 +55,15 @@ public class NLQAgent {
     5. Be confident, concise, and professional.
     """;
 
-    public NLQAgent(ChatClient.Builder chatClientBuilder, VectorStore vectorStore, SafeSqlExecutor sqlExecutor, QueryLogRepository logRepository) {
+    public NLQAgent(ChatClient.Builder chatClientBuilder, VectorStore vectorStore, SafeSqlExecutor sqlExecutor, QueryLogRepository logRepository, GoogleGenAiChatModel chatModel) {
         this.chatClient = chatClientBuilder.build();
         this.vectorStore = vectorStore;
         this.sqlExecutor = sqlExecutor;
         this.logRepository = logRepository;
+        this.currentModelName = chatModel.getDefaultOptions().getModel();
     }
+
+    private final String currentModelName;
 
     public Object processQuestion(String userQuestion) {
         // 1. Retrieve Schema Metadata (RAG)
@@ -73,6 +78,7 @@ public class NLQAgent {
                 .map(Document::getText)
                 .collect(Collectors.joining("\n"));
 
+        logger.info("Directing query to Model: {}", currentModelName);
         logger.info("Generating SQL for question: {}", userQuestion);
 
         try {
@@ -93,6 +99,7 @@ public class NLQAgent {
 
         } catch (Exception e) {
             // Handle Quota (429) or other API/SQL issues gracefully
+            logger.error("FULL ERROR DETAIL: ", e);
             String errorMessage = e.getMessage();
             logger.error("Error in SQL generation/execution flow: {}", errorMessage);
 
