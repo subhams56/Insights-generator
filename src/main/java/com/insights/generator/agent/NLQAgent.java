@@ -118,11 +118,14 @@ public class NLQAgent {
         logger.info("Cache is {}", caching ? "ENABLED" : "DISABLED");
         if(caching) {
             // 1. CHECK PERSISTENT LOG CACHE
-            Optional<QueryLog> cachedEntry = logRepository.findFirstByQuestionOrderByCreatedAtDesc(userQuestion);
+            String squeezedQuestion = userQuestion.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
 
+            // 2. Query the database using the smart match
+            Optional<QueryLog> cachedEntry = logRepository.findSmartLexicalMatch(squeezedQuestion);
 
             if (cachedEntry.isPresent()) {
-                logger.info("Cache HIT: Returning stored results for: {}", userQuestion);
+                logger.info(" Cache HIT! Matched '{}' with stored question: '{}'",
+                        userQuestion, cachedEntry.get().getQuestion());
                 return Map.of(
                         "agent", "NLQ_AGENT (Cache)",
                         "question", userQuestion,
@@ -131,6 +134,9 @@ public class NLQAgent {
                         "source", "CACHE"
                 );
             }
+        }
+        else {
+            logger.info("Cache is DISABLED");
         }
 
         Object rawResponse = processQuestion(userQuestion);

@@ -62,15 +62,17 @@ public class InsightAgent {
 
         // --- L1 CACHE LOOKUP ---
         if (cacheEnabled) {
-            logger.info("Insight Agent Cache is ENABLED");
-            Optional<QueryLog> cachedEntry = logRepository.findFirstByQuestionOrderByCreatedAtDesc(userQuestion);
+            String squeezedQuestion = userQuestion.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+
+            // 2. Query the database using the smart match
+            Optional<QueryLog> cachedEntry = logRepository.findSmartLexicalMatch(squeezedQuestion);
 
             if (cachedEntry.isPresent()) {
-                logger.info("Cache HIT: Returning stored results for: {}", userQuestion);
+                logger.info(" Cache HIT! Matched '{}' with stored question: '{}'",
+                        userQuestion, cachedEntry.get().getQuestion());
 
-                // FIX 2: Make sure these keys perfectly match the Cache Miss keys below
                 return Map.of(
-                        "agent", "INSIGHT_AGENT (Cache)",
+                        "agent", "INSIGHT_AGENT (Cached)",
                         "question", userQuestion,
                         "response", cachedEntry.get().getResponse(),
                         "rawData", cachedEntry.get().getRawData(),
@@ -78,7 +80,7 @@ public class InsightAgent {
                 );
             }
         } else {
-            logger.info("Insight Agent Cache is DISABLED");
+            logger.info("Cache is DISABLED");
         }
 
         try {
