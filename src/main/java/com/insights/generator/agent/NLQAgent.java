@@ -10,6 +10,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -19,6 +20,9 @@ import java.util.stream.Collectors;
 
 @Service
 public class NLQAgent {
+
+    @Value("${cache.enabled}")
+    private boolean caching;
 
     private static final Logger logger = LoggerFactory.getLogger(NLQAgent.class);
     private final ChatClient chatClient;
@@ -111,16 +115,20 @@ public class NLQAgent {
     }
 
     public Map<String, Object> processQuestionV2(String userQuestion) {
-        // 1. CHECK PERSISTENT LOG CACHE
-        Optional<QueryLog> cachedEntry = logRepository.findFirstByQuestionOrderByCreatedAtDesc(userQuestion);
+        logger.info("Cache is {}", caching ? "ENABLED" : "DISABLED");
+        if(caching) {
+            // 1. CHECK PERSISTENT LOG CACHE
+            Optional<QueryLog> cachedEntry = logRepository.findFirstByQuestionOrderByCreatedAtDesc(userQuestion);
 
-        if (cachedEntry.isPresent()) {
-            logger.info("Cache HIT: Returning stored results for: {}", userQuestion);
-            return Map.of(
-                    "answer", cachedEntry.get().getResponse(),
-                    "raw_data", cachedEntry.get().getRawData(),
-                    "source", "CACHE"
-            );
+
+            if (cachedEntry.isPresent()) {
+                logger.info("Cache HIT: Returning stored results for: {}", userQuestion);
+                return Map.of(
+                        "answer", cachedEntry.get().getResponse(),
+                        "raw_data", cachedEntry.get().getRawData(),
+                        "source", "CACHE"
+                );
+            }
         }
 
         Object rawResponse = processQuestion(userQuestion);
