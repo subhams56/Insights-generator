@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>5G Insights History</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; padding: 20px; }
+        .card { border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .table-container { background: white; border-radius: 10px; padding: 20px; }
+        .badge-cache { background-color: #6c757d; }
+        .badge-llm { background-color: #0d6efd; }
+        pre { white-space: pre-wrap; word-wrap: break-word; font-size: 0.85rem; background: #f1f1f1; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid">
+    <div class="card p-4 mb-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2>📡 Telecom Insights Generator - NLQ Agent History</h2>
+            <button onclick="loadHistory()" class="btn btn-primary">🔄 Refresh Logs</button>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="table table-hover">
+            <thead class="table-dark">
+            <tr>
+                <th style="width: 5%">ID</th>
+                <th style="width: 15%">Time</th>
+                <th style="width: 30%">Question</th>
+                <th style="width: 30%">AI Answer (Refined)</th>
+                <th style="width: 20%">Raw Data (JSON)</th>
+            </tr>
+            </thead>
+            <tbody id="history-body">
+            <tr>
+                <td colspan="5" class="text-center">Loading insights...</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    async function loadHistory() {
+        const tbody = document.getElementById('history-body');
+
+        try {
+            const response = await fetch('/api/v1/insights/history');
+            const data = await response.json();
+
+            tbody.innerHTML = ''; // Clear loading message
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center">No history found. Start asking questions!</td></tr>';
+                return;
+            }
+
+            data.forEach(log => {
+                const row = document.createElement('tr');
+                const date = new Date(log.createdAt).toLocaleString();
+
+                row.innerHTML = `
+                    <td>${log.id}</td>
+                    <td><small class="text-muted">${date}</small></td>
+                    <td><strong>${log.question}</strong></td>
+                    <td class="text-primary">${log.response}</td>
+                    <td><pre>${log.rawData || 'N/A'}</pre></td>
+                `;
+                tbody.appendChild(row);
+            });
+        } catch (error) {
+            console.error('Error fetching history:', error);
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Failed to load history. Check if the server is running.</td></tr>';
+        }
+    }
+
+    // Load data when page opens
+    window.onload = loadHistory;
+</script>
+
+</body>
+</html>

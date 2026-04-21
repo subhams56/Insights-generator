@@ -11,6 +11,24 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * <h3>Schema Metadata Ingestor</h3>
+ * <p>
+ * This class acts as the "Instruction Manual" for the AI. It is responsible for injecting
+ * technical knowledge about our database structure into the Vector Store (pgvector).
+ * </p>
+ * * <b>Key Responsibilities:</b>
+ * <ul>
+ * <li>Defines the 5G Network database schema in plain English for the LLM.</li>
+ * <li>Provides business constraints (e.g., reminding the AI that all data is from June 2024).</li>
+ * <li>Maps natural language terms like 'churn' or 'stability' to specific database columns.</li>
+ * <li>Supplies a list of valid regions to prevent the AI from querying non-existent data.</li>
+ * </ul>
+ * * <p>
+ * This ingestion runs automatically once the application is fully started and ready.
+ * </p>
+ */
+
 @Component
 public class SchemaMetadataIngestor {
 
