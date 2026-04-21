@@ -1,6 +1,7 @@
 package com.insights.generator.controller;
 
 import com.insights.generator.agent.NLQAgent;
+import com.insights.generator.agent.OrchestratorService;
 import com.insights.generator.model.QueryLog;
 import com.insights.generator.repository.QueryLogRepository;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,10 +20,12 @@ public class QueryController {
 
     private final NLQAgent nlqAgent;
     private final QueryLogRepository logRepository;
+    private final OrchestratorService orchestrator;
 
-    public QueryController(NLQAgent nlqAgent, QueryLogRepository logRepository) {
+    public QueryController(NLQAgent nlqAgent, QueryLogRepository logRepository, OrchestratorService orchestrator) {
         this.nlqAgent = nlqAgent;
         this.logRepository = logRepository;
+        this.orchestrator = orchestrator;
     }
 
     @GetMapping("/ask")
@@ -35,7 +38,8 @@ public class QueryController {
     @GetMapping("/askV2")
     @Operation(summary = "Ask a natural language question about the 5G Telecom dataset.Returns a refined, human-friendly answer")
     public ResponseEntity<Object> askQuestionV2(@RequestParam String query) {
-        return ResponseEntity.ok(nlqAgent.processQuestionV2(query));
+        Object result = orchestrator.routeAndExecute(query);
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/history")
