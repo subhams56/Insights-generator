@@ -87,13 +87,14 @@ public class NLQAgent {
 
         try {
             // 2. Generate SQL using ChatClient with system/user prompt
+            // First LLM Call
             String generatedSql = chatClient.prompt()
                     .system(sp -> sp.text(SYSTEM_PROMPT).param("schema_context", schemaContext))
                     .user(userQuestion)
                     .call()
                     .content();
 
-            // Clean markdown backticks
+            // Clean the SQL
             generatedSql = cleanSqlOutput(generatedSql);
             logger.info("Generated SQL for Execution: \n---\n{}\n---", generatedSql);
 
@@ -139,7 +140,7 @@ public class NLQAgent {
             logger.info("Cache is DISABLED");
         }
 
-        Object rawResponse = processQuestion(userQuestion);
+        Object rawResponse = processQuestion(userQuestion); // Calling the original method to get raw data (Does 1 LLM call + SQL execution)
 
         // If the inner processQuestion returned an error map, return it immediately
         if (rawResponse instanceof Map && ((Map<?, ?>) rawResponse).containsKey("error")) {
@@ -177,43 +178,6 @@ public class NLQAgent {
                     "raw_data", rawResponse,
                     "details", "Could not generate human-readable summary, but raw data is available."
             );
-        }
-    }
-
-    /**
-     * Used by the Insight Agent. Generates and executes SQL, but returns the raw
-     * JSON/List data instead of a refined English string.
-     */
-    public List<Map<String, Object>> fetchRawDataOnly(String userQuestion) {
-        logger.info("NLQ Agent fetching raw data for Insight Agent...");
-        try {
-            // 1. Retrieve Schema Metadata (RAG)
-            List<Document> similarDocuments = vectorStore.similaritySearch(
-                    SearchRequest.builder()
-                            .query(userQuestion)
-                            .topK(2)
-                            .build()
-            );
-            // 1. Get Schema Context
-            String schemaContext = similarDocuments.stream()
-                    .map(Document::getText)
-                    .collect(Collectors.joining("\n"));
-
-                    // 2. Generate SQL
-                    String rawSqlResponse = chatClient.prompt()
-                    .system(s -> s.text(SYSTEM_PROMPT).param("schema_context", schemaContext))
-                    .user(userQuestion)
-                    .call()
-                    .content();
-
-            String cleanSql = cleanSqlOutput(rawSqlResponse);
-
-            // 3. Execute and return raw data directly
-            return sqlExecutor.executeReadOnlyQuery(cleanSql);
-
-        } catch (Exception e) {
-            logger.error("Error fetching raw data for insight: ", e);
-            throw new RuntimeException("Failed to fetch raw data for analysis.");
         }
     }
 

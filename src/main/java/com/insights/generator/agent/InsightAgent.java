@@ -2,16 +2,66 @@ package com.insights.generator.agent;
 
 import com.insights.generator.model.QueryLog;
 import com.insights.generator.repository.QueryLogRepository;
+import com.insights.generator.repository.SafeSqlExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.document.Document;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
+
+/**
+ * InsightAgent is a Spring-managed service responsible for transforming raw database query results
+ * into executive-friendly business insights using LLM-powered analysis.
+ *
+ * PRIMARY RESPONSIBILITIES:
+ * - Orchestrate the analysis workflow by delegating SQL execution to NLQAgent
+ * - Process raw data through Google Generative AI to generate business insights
+ * - Manage a query response cache to optimize performance and reduce LLM API calls
+ * - Persist frequently accessed insights for faster retrieval
+ *
+ * ANALYSIS FLOW:
+ * 1. User submits a natural language question via analyze(String)
+ * 2. Cache lookup is performed (if enabled) using lexical matching
+ * 3. If not cached, NLQAgent executes RAG + SQL to fetch raw data
+ * 4. Raw data is sent to Google Generative AI with a curated system prompt
+ * 5. LLM generates a professional, Markdown-formatted business insight
+ * 6. Result is cached and returned to the caller
+ *
+ * KEY FEATURES:
+ * - L1 Cache Layer: Reduces latency by matching user questions against historical queries
+ * - Smart Lexical Matching: Normalizes questions (removes special characters, lowercases) for better cache hits
+ * - Professional Output Formatting: Ensures insights focus on business value with no technical jargon
+ * - Error Resilience: Gracefully handles failures with informative error messages
+ *
+ * CONFIGURATION PROPERTIES:
+ * - spring.ai.google.genai.chat.options.model: The Google Generative AI model to use
+ * - agent.cache.enabled: Enable/disable query caching (default: true)
+ *
+ * DEPENDENCIES:
+ * - ChatClient: Spring AI client for LLM interaction
+ * - NLQAgent: Handles Natural Language Query execution and RAG
+ * - QueryLogRepository: Manages query cache persistence
+ *
+ * DOMAIN CONTEXT:
+ * This agent specializes in 5G Telecom Data Analysis and generates insights optimized
+ * for senior stakeholders and business decision-makers. It assumes data is available
+ * for the current reporting period (June 2024) and handles empty result sets gracefully.
+ *
+ * @author Your Name
+ * @version 1.0
+ * @see NLQAgent
+ * @see QueryLogRepository
+ * @since 1.0
+ */
 
 @Service
 public class InsightAgent {
@@ -21,9 +71,25 @@ public class InsightAgent {
     private final ChatClient chatClient;
     private final NLQAgent nlqAgent;
     private final QueryLogRepository logRepository;
+    private final VectorStore vectorStore;
+    private final SafeSqlExecutor sqlExecutor;
 
     @Value("${agent.cache.enabled:true}")
     private boolean cacheEnabled;
+
+
+    private final String SYSTEM_PROMPT = """
+    You are a PostgreSQL expert for a 5G Telecom dataset.
+    
+    SCHEMA CONTEXT:
+    {schema_context}
+
+    CRITICAL RULES:
+    1. The dataset contains HISTORICAL data from JUNE 2024. If the user asks for 'this month' or 'now', use '2024-06-01' as the reference point.
+    2. ALWAYS return a valid SQL SELECT statement.
+    3. Use COALESCE(metric, 0) to avoid nulls.
+    4. Only return the SQL code, no explanations.
+    """;
 
     private static final String INSIGHT_SYSTEM_PROMPT = """
             You are a Senior 5G Telecom Data Analyst. 
@@ -44,10 +110,12 @@ public class InsightAgent {
     public InsightAgent(ChatClient.Builder chatClientBuilder,
                         NLQAgent nlqAgent,
                         QueryLogRepository logRepository,
-                        @Value("${spring.ai.google.genai.chat.options.model}") String model) {
+                        @Value("${spring.ai.google.genai.chat.options.model}") String model, VectorStore vectorStore, SafeSqlExecutor sqlExecutor) {
 
         this.logRepository = logRepository;
         this.nlqAgent = nlqAgent;
+        this.vectorStore = vectorStore;
+        this.sqlExecutor = sqlExecutor;
 
         GoogleGenAiChatOptions options = GoogleGenAiChatOptions.builder().build();
         options.setModel(model); // 'model' is now safely populated!
@@ -85,7 +153,7 @@ public class InsightAgent {
 
         try {
             // 1. Delegate the heavy lifting (RAG + SQL + Execution) to the NLQ Agent
-            List<Map<String, Object>> rawData = nlqAgent.fetchRawDataOnly(userQuestion);
+            List<Map<String, Object>> rawData = fetchRawDataOnly(userQuestion);
 
             if (rawData == null || rawData.isEmpty()) {
                 return Map.of(
@@ -127,5 +195,46 @@ public class InsightAgent {
 
     private void saveToCache(String userQuestion, String insightResponse, String rawResponse) {
         logRepository.save(new QueryLog(userQuestion, insightResponse, rawResponse));
+    }
+
+
+    public List<Map<String, Object>> fetchRawDataOnly(String userQuestion) {
+        logger.info("NLQ Agent fetching raw data for Insight Agent...");
+        try {
+            // 1. Retrieve Schema Metadata (RAG)
+            List<Document> similarDocuments = vectorStore.similaritySearch(
+                    SearchRequest.builder()
+                            .query(userQuestion)
+                            .topK(2)
+                            .build()
+            );
+            // 1. Get Schema Context
+            String schemaContext = similarDocuments.stream()
+                    .map(Document::getText)
+                    .collect(Collectors.joining("\n"));
+
+            // 2. Generate SQL
+            String rawSqlResponse = chatClient.prompt()
+                    .system(s -> s.text(SYSTEM_PROMPT).param("schema_context", schemaContext))
+                    .user(userQuestion)
+                    .call()
+                    .content();
+
+            String cleanSql = cleanSqlOutput(rawSqlResponse);
+
+            // 3. Execute and return raw data directly
+            return sqlExecutor.executeReadOnlyQuery(cleanSql);
+
+        } catch (Exception e) {
+            logger.error("Error fetching raw data for insight: ", e);
+            throw new RuntimeException("Failed to fetch raw data for analysis.");
+        }
+
+
+    }
+
+    private String cleanSqlOutput(String sql) {
+        if (sql == null) return "";
+        return sql.replaceAll("```sql|```", "").trim();
     }
 }
