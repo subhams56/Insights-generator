@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions; // <-- NEW IMPORT
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,6 +30,7 @@ public class NLQAgent {
     private final VectorStore vectorStore;
     private final SafeSqlExecutor sqlExecutor;
     private final QueryLogRepository logRepository;
+    private final String currentModelName;
 
 
     private final String SYSTEM_PROMPT = """
@@ -68,10 +70,7 @@ public class NLQAgent {
         this.currentModelName = chatModel.getDefaultOptions().getModel();
     }
 
-    private final String currentModelName;
-
-    public Object processQuestion(String userQuestion) {
-        // 1. Retrieve Schema Metadata (RAG)
+    public Object processQuestion(String userQuestion, String requestedModel) {
         List<Document> similarDocuments = vectorStore.similaritySearch(
                 SearchRequest.builder()
                         .query(userQuestion)
@@ -83,28 +82,28 @@ public class NLQAgent {
                 .map(Document::getText)
                 .collect(Collectors.joining("\n"));
 
-        logger.info("Directing query to Model: {}", currentModelName);
+        String targetModel = (requestedModel != null && !requestedModel.trim().isEmpty()) ? requestedModel : currentModelName;
+        logger.info("Directing SQL Generation to Model: {}", targetModel);
         logger.info("Generating SQL for question: {}", userQuestion);
 
         try {
-            // 2. Generate SQL using ChatClient with system/user prompt
-            // First LLM Call
-            String generatedSql = chatClient.prompt()
+            // Build Prompt
+            var promptSpec = chatClient.prompt()
                     .system(sp -> sp.text(SYSTEM_PROMPT).param("schema_context", schemaContext))
-                    .user(userQuestion)
-                    .call()
-                    .content();
+                    .user(userQuestion);
 
-            // Clean the SQL
+            // DYNAMIC MODEL OVERRIDE
+            if (requestedModel != null && !requestedModel.trim().isEmpty()) {
+                promptSpec.options(GoogleGenAiChatOptions.builder().model(requestedModel).build());
+            }
+
+            String generatedSql = promptSpec.call().content();
             generatedSql = cleanSqlOutput(generatedSql);
             logger.info("Generated SQL for Execution: \n---\n{}\n---", generatedSql);
 
-            // 3. Execute Query
-            List<Map<String, Object>> queryResults = sqlExecutor.executeReadOnlyQuery(generatedSql);
-            return queryResults;
+            return sqlExecutor.executeReadOnlyQuery(generatedSql);
 
         } catch (Exception e) {
-            // Handle Quota (429) or other API/SQL issues gracefully
             logger.error("FULL ERROR DETAIL: ", e);
             String errorMessage = e.getMessage();
             logger.error("Error in SQL generation/execution flow: {}", errorMessage);
@@ -116,13 +115,10 @@ public class NLQAgent {
         }
     }
 
-    public Map<String, Object> processQuestionV2(String userQuestion) {
+    public Map<String, Object> processQuestionV2(String userQuestion, String requestedModel) {
         logger.info("Cache is {}", caching ? "ENABLED" : "DISABLED");
         if(caching) {
-            // 1. CHECK PERSISTENT LOG CACHE
             String squeezedQuestion = userQuestion.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
-
-            // 2. Query the database using the smart match
             Optional<QueryLog> cachedEntry = logRepository.findSmartLexicalMatch(squeezedQuestion);
 
             if (cachedEntry.isPresent()) {
@@ -137,31 +133,32 @@ public class NLQAgent {
                 );
             }
         }
-        else {
-            logger.info("Cache is DISABLED");
-        }
 
-        Object rawResponse = processQuestion(userQuestion); // Calling the original method to get raw data (Does 1 LLM call + SQL execution)
+        // Pass requestedModel to raw data fetcher
+        Object rawResponse = processQuestion(userQuestion, requestedModel);
 
-        // If the inner processQuestion returned an error map, return it immediately
         if (rawResponse instanceof Map && ((Map<?, ?>) rawResponse).containsKey("error")) {
             return (Map<String, Object>) rawResponse;
         }
 
         try {
-            // Convert raw results to string for the LLM
             String dataString = rawResponse.toString();
+            String targetModel = (requestedModel != null && !requestedModel.trim().isEmpty()) ? requestedModel : currentModelName;
+            logger.info("Directing Refiner to Model: {}", targetModel);
 
-            // 2. Call LLM for the second time to "Refine" the data into English
-            String refinedAnswer = chatClient.prompt()
+            var refinerPromptSpec = chatClient.prompt()
                     .system(sp -> sp.text(REFINER_PROMPT)
                             .param("user_question", userQuestion)
                             .param("raw_data", dataString))
-                    .user("Please summarize the findings.")
-                    .call()
-                    .content();
+                    .user("Please summarize the findings.");
 
-            // 3. Save successful interaction to log
+            // DYNAMIC MODEL OVERRIDE
+            if (requestedModel != null && !requestedModel.trim().isEmpty()) {
+                refinerPromptSpec.options(GoogleGenAiChatOptions.builder().model(requestedModel).build());
+            }
+
+            String refinedAnswer = refinerPromptSpec.call().content();
+
             logRepository.save(new QueryLog(userQuestion, refinedAnswer, rawResponse.toString()));
 
             return Map.of(
@@ -169,7 +166,8 @@ public class NLQAgent {
                     "question", userQuestion,
                     "response", refinedAnswer,
                     "rawData", rawResponse,
-                    "source", "LLM-RAG"
+                    "source", "LLM-RAG",
+                    "modelUsed", targetModel // Optional: Expose which model served the request
             );
 
         } catch (Exception e) {

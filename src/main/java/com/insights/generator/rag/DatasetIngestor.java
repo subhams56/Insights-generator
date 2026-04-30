@@ -52,10 +52,11 @@ public class DatasetIngestor {
         String sql = "INSERT INTO refined_network_metrics " +
                 "(timestamp, hour_of_day, is_peak_hour, region, state, city, network_band, environment_type, " +
                 "avg_latency_ms, download_speed_mbps, upload_speed_mbps, packet_loss_pct, active_users, " +
-                "network_utilization_pct, congestion_level, dropped_calls, weather_condition, quality_score) " +
+                "network_utilization_pct, congestion_level, dropped_calls, weather_condition, quality_score, " +
+                "device_model, carrier) " + // <--- ADDED HERE
                 "VALUES (CAST(? AS TIMESTAMP), CAST(? AS INTEGER), CAST(? AS INTEGER), ?, ?, ?, ?, ?, " +
                 "CAST(? AS NUMERIC), CAST(? AS NUMERIC), CAST(? AS NUMERIC), CAST(? AS NUMERIC), CAST(? AS INTEGER), " +
-                "CAST(? AS NUMERIC), ?, CAST(? AS INTEGER), ?, CAST(? AS NUMERIC))";
+                "CAST(? AS NUMERIC), ?, CAST(? AS INTEGER), ?, CAST(? AS NUMERIC), ?, ?)";
 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(csvFile.getInputStream(), StandardCharsets.UTF_8));
              CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withFirstRecordAsHeader().withIgnoreHeaderCase().withTrim())) {
@@ -83,7 +84,9 @@ public class DatasetIngestor {
                             record.get("congestion_level"),
                             cleanInt(record.get("dropped_calls")),
                             record.get("weather_condition"),
-                            cleanNumeric(record.get("quality_score"))
+                            cleanNumeric(record.get("quality_score")),
+                            record.get("Device Model"),
+                            record.get("Carrier")
                     };
                     batchArgs.add(params);
 

@@ -28,15 +28,15 @@ public class QueryController {
 
     @GetMapping("/ask")
     @Operation(summary = "Ask a natural language question about the 5G Telecom dataset.Returns JSON data directly")
-    public ResponseEntity<Object> askQuestion(@RequestParam String query) {
-        Object response = nlqAgent.processQuestion(query);
+    public ResponseEntity<Object> askQuestion(@RequestParam String query,@RequestParam(required = false) String model) {
+        Object response = nlqAgent.processQuestion(query,model);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/askV2")
     @Operation(summary = "Ask a natural language question about the 5G Telecom dataset.Returns a refined, human-friendly answer")
-    public ResponseEntity<Object> askQuestionV2(@RequestParam String query) {
-        Object result = orchestrator.routeAndExecute(query);
+    public ResponseEntity<Object> askQuestionV2(@RequestParam String query,@RequestParam(required = false) String model) {
+        Object result = orchestrator.routeAndExecute(query,model);
         return ResponseEntity.ok(result);
     }
 

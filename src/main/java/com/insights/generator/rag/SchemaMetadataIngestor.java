@@ -52,6 +52,8 @@ public class SchemaMetadataIngestor {
             - dropped_calls (INTEGER): Count of failed connections.
             - weather_condition (VARCHAR): 'Clear', 'Rain', etc.
             - quality_score (NUMERIC): Derived overall network health KPI.
+            - device_model (VARCHAR): Specific phones like iPhone 14, Galaxy S23, Pixel 7.
+            - carrier (VARCHAR): Telecom providers like Verizon, AT&T, T-Mobile.
             
             CRITICAL SQL RULES:
             - NEVER use columns like 'latency_ms', 'record_date', or 'packet_loss_percentage'. ONLY use the exact names listed above.
