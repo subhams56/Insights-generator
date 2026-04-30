@@ -47,4 +47,14 @@ public class QueryController {
         List<QueryLog> history = logRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
         return ResponseEntity.ok(history);
     }
+
+    @GetMapping("/questions")
+    @Operation(summary = "Get the history of all questions asked, sorted by most recent first")
+    public ResponseEntity<List<String>> getQuestions() {
+        List<QueryLog> history = logRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+        List<String> questions = history.stream()
+                .map(QueryLog::getQuestion)
+                .toList();
+        return ResponseEntity.ok(questions);
+    }
 }
