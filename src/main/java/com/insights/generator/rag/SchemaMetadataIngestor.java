@@ -11,24 +11,6 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Map;
 
-/**
- * <h3>Schema Metadata Ingestor</h3>
- * <p>
- * This class acts as the "Instruction Manual" for the AI. It is responsible for injecting
- * technical knowledge about our database structure into the Vector Store (pgvector).
- * </p>
- * * <b>Key Responsibilities:</b>
- * <ul>
- * <li>Defines the 5G Network database schema in plain English for the LLM.</li>
- * <li>Provides business constraints (e.g., reminding the AI that all data is from June 2024).</li>
- * <li>Maps natural language terms like 'churn' or 'stability' to specific database columns.</li>
- * <li>Supplies a list of valid regions to prevent the AI from querying non-existent data.</li>
- * </ul>
- * * <p>
- * This ingestion runs automatically once the application is fully started and ready.
- * </p>
- */
-
 @Component
 public class SchemaMetadataIngestor {
 
@@ -41,43 +23,49 @@ public class SchemaMetadataIngestor {
 
     @EventListener(ApplicationReadyEvent.class)
     public void ingestSchemaMetadata() {
-        logger.info("Initializing 5G Schema Metadata in Vector Store...");
+        logger.info("Initializing US-Centric 5G Schema Metadata in Vector Store...");
 
-        // The "Brain" of your RAG - providing schema, regions, and the 2024 time constraint.
+        // Updated Schema Document based on refined_network_data
         String networkDataSchema = """
-            Table: network_metrics
-            Description: Comprehensive performance metrics for the 5G network. 
+            Table: refined_network_metrics
+            Description: US-Centric comprehensive performance metrics for a 5G telecom network. 
             
             DATA RELEVANCE CONSTRAINTS:
-            - ALL DATA IS FROM JUNE 2024. 
-            - If a user asks for 'today', 'this month', or 'current data', you MUST query for JUNE 2024.
+            - Historical tracking from June 2024 to May 2025. 
             
-            AVAILABLE REGIONS (Values in 'region_id' column): 
-            Mumbai, Kolkata, New York, Delhi, Chennai, Tokyo, San Francisco, Berlin.
-            
-            Columns:
-            - timestamp (TIMESTAMP): Recorded time (Data exists only for 2024-06).
-            - region_id (VARCHAR): City name. Use ONLY from the AVAILABLE REGIONS list.
-            - cell_id (VARCHAR): Tower/Device identifier.
-            - avg_latency_ms (NUMERIC): Network delay.
+            EXACT SCHEMA COLUMNS (DO NOT INVENT NAMES):
+            - timestamp (TIMESTAMP): The exact time of the record. Use this for date/time filtering (e.g., timestamp >= '2024-11-01').
+            - hour_of_day (INTEGER): 0-23.
+            - is_peak_hour (INTEGER): 1 for peak, 0 for off-peak.
+            - region (VARCHAR): Northeast, Midwest, South, West.
+            - state (VARCHAR): NY, IL, TX, CA, FL, WA.
+            - city (VARCHAR): Specific city names.
+            - network_band (VARCHAR): 5G mmWave, 5G Sub-6, 4G LTE.
+            - environment_type (VARCHAR): Urban, Suburban, Rural.
+            - avg_latency_ms (NUMERIC): Use this for latency queries.
             - download_speed_mbps (NUMERIC): Downlink speed.
             - upload_speed_mbps (NUMERIC): Uplink speed.
-            - packet_loss_pct (NUMERIC): Packet loss. Use as primary metric for 'CHURN' or 'STABILITY'.
-            - active_users (INTEGER): User count.
+            - packet_loss_pct (NUMERIC): Packet loss percentage.
+            - active_users (INTEGER): Total users connected.
+            - network_utilization_pct (NUMERIC): Network load/utilization.
+            - congestion_level (VARCHAR): 'Low', 'Moderate', 'High', 'Critical'.
+            - dropped_calls (INTEGER): Count of failed connections.
+            - weather_condition (VARCHAR): 'Clear', 'Rain', etc.
+            - quality_score (NUMERIC): Derived overall network health KPI.
             
-            FALLBACK RULE:
-            If a user asks for a region NOT in the list (e.g., Andhra Pradesh), return a SQL query that selects the missing status:
-            SELECT 'Region not found. Please choose from: Mumbai, Kolkata, New York, Delhi, Chennai, Tokyo, San Francisco, Berlin' AS status;
+            CRITICAL SQL RULES:
+            - NEVER use columns like 'latency_ms', 'record_date', or 'packet_loss_percentage'. ONLY use the exact names listed above.
+            - If a user asks for a region/state not in the valid list, return: SELECT 'Target region not in active US deployment zones' AS status;
             """;
 
         Document schemaDoc = new Document(networkDataSchema, Map.of(
                 "type", "schema",
-                "domain", "5G_telecom",
-                "table", "network_metrics"
+                "domain", "5G_telecom_US",
+                "table", "refined_network_metrics"
         ));
 
-        // Add to pgvector store
+        // Note: You might want to TRUNCATE your vector_store table before running this to clear the old schema embeddings!
         vectorStore.add(List.of(schemaDoc));
-        logger.info("Schema metadata with 2024 time-context and region constraints ingested successfully.");
+        logger.info("US-Centric Schema metadata ingested successfully.");
     }
 }

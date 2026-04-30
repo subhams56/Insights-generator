@@ -25,10 +25,10 @@ public class DatasetIngestor {
     private static final Logger logger = LoggerFactory.getLogger(DatasetIngestor.class);
     private final JdbcTemplate jdbcTemplate;
 
-    @Value("classpath:data/5g_network_data.csv")
+    // 1. Updated File Path
+    @Value("classpath:data/refined_network_data.csv")
     private Resource csvFile;
 
-    // Batch size of 100-500 is optimal for cloud databases like Neon
     private static final int BATCH_SIZE = 200;
 
     public DatasetIngestor(JdbcTemplate jdbcTemplate) {
@@ -38,17 +38,24 @@ public class DatasetIngestor {
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void loadDataOnStartup() {
-        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM network_metrics", Long.class);
+        // 2. Point to the new table
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM refined_network_metrics", Long.class);
 
         if (count != null && count > 0) {
-            logger.info("Database already contains {} records. Skipping CSV ingestion.", count);
+            logger.info("Database already contains {} records in refined_network_metrics. Skipping ingestion.", count);
             return;
         }
 
-        logger.info("Starting Batch CSV data ingestion into network_metrics via Cloud Link...");
+        logger.info("Starting Batch CSV data ingestion into refined_network_metrics...");
 
-        String sql = "INSERT INTO network_metrics (timestamp, region_id, cell_id, avg_latency_ms, download_speed_mbps, upload_speed_mbps, packet_loss_pct, active_users) " +
-                "VALUES (CAST(? AS TIMESTAMP), ?, ?, CAST(? AS NUMERIC), CAST(? AS NUMERIC), CAST(? AS NUMERIC), CAST(? AS NUMERIC), CAST(? AS INTEGER))";
+        // 3. Updated SQL to match new schema
+        String sql = "INSERT INTO refined_network_metrics " +
+                "(timestamp, hour_of_day, is_peak_hour, region, state, city, network_band, environment_type, " +
+                "avg_latency_ms, download_speed_mbps, upload_speed_mbps, packet_loss_pct, active_users, " +
+                "network_utilization_pct, congestion_level, dropped_calls, weather_condition, quality_score) " +
+                "VALUES (CAST(? AS TIMESTAMP), CAST(? AS INTEGER), CAST(? AS INTEGER), ?, ?, ?, ?, ?, " +
+                "CAST(? AS NUMERIC), CAST(? AS NUMERIC), CAST(? AS NUMERIC), CAST(? AS NUMERIC), CAST(? AS INTEGER), " +
+                "CAST(? AS NUMERIC), ?, CAST(? AS INTEGER), ?, CAST(? AS NUMERIC))";
 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(csvFile.getInputStream(), StandardCharsets.UTF_8));
              CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withFirstRecordAsHeader().withIgnoreHeaderCase().withTrim())) {
@@ -57,19 +64,29 @@ public class DatasetIngestor {
 
             for (CSVRecord record : csvParser) {
                 try {
+                    // 4. Map exact headers from the new CSV
                     Object[] params = new Object[]{
-                            record.get("Timestamp"),
-                            record.get("Location"),
-                            record.get("Device Model"),
-                            cleanNumeric(record.get("Latency (ms)")),
-                            cleanNumeric(record.get("Download Speed (Mbps)")),
-                            cleanNumeric(record.get("Upload Speed (Mbps)")),
-                            cleanNumeric(record.get("Jitter (ms)")),
-                            cleanInt(record.get("Ping to Google (ms)"))
+                            record.get("timestamp"),
+                            cleanInt(record.get("hour_of_day")),
+                            cleanInt(record.get("is_peak_hour")),
+                            record.get("region"),
+                            record.get("state"),
+                            record.get("city"),
+                            record.get("network_band"),
+                            record.get("environment_type"),
+                            cleanNumeric(record.get("avg_latency_ms")),
+                            cleanNumeric(record.get("download_speed_mbps")),
+                            cleanNumeric(record.get("upload_speed_mbps")),
+                            cleanNumeric(record.get("packet_loss_pct")),
+                            cleanInt(record.get("active_users")),
+                            cleanNumeric(record.get("network_utilization_pct")),
+                            record.get("congestion_level"),
+                            cleanInt(record.get("dropped_calls")),
+                            record.get("weather_condition"),
+                            cleanNumeric(record.get("quality_score"))
                     };
                     batchArgs.add(params);
 
-                    // When batch size is reached, push to DB and clear list
                     if (batchArgs.size() >= BATCH_SIZE) {
                         jdbcTemplate.batchUpdate(sql, batchArgs);
                         batchArgs.clear();
@@ -80,12 +97,11 @@ public class DatasetIngestor {
                 }
             }
 
-            // Final push for remaining records
             if (!batchArgs.isEmpty()) {
                 jdbcTemplate.batchUpdate(sql, batchArgs);
             }
 
-            logger.info("Successfully finished Cloud Ingestion into Neon.");
+            logger.info("Successfully finished Data Ingestion into refined_network_metrics.");
 
         } catch (Exception e) {
             logger.error("Failed to load CSV data: {}", e.getMessage(), e);
@@ -93,12 +109,12 @@ public class DatasetIngestor {
     }
 
     private String cleanNumeric(String val) {
-        if (val == null) return "0";
+        if (val == null || val.isEmpty()) return "0";
         return val.replaceAll("[^0-9.]", "");
     }
 
     private Integer cleanInt(String val) {
-        if (val == null) return 0;
+        if (val == null || val.isEmpty()) return 0;
         String cleaned = val.replaceAll("[^0-9]", "");
         return cleaned.isEmpty() ? 0 : Integer.parseInt(cleaned);
     }

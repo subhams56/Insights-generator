@@ -37,23 +37,23 @@ public class OrchestratorService {
     }
 
     private void initializeIntentRoutes() {
-        logger.info("Initializing Semantic Router Intents in RAM...");
+        logger.info("Initializing US-Centric Semantic Router Intents in RAM...");
 
         List<Document> intents = List.of(
-                // NLQ Agent Intents (Raw Data Fetching ONLY)
+                // NLQ Agent Intents (Raw Data Fetching, simple lookups)
                 new Document("Fetch current network metrics, latency, speed, and packet loss.", Map.of("agent", AgentType.NLQ_AGENT.name())),
-                new Document("What is the average download and upload speed customers are experiencing?", Map.of("agent", AgentType.NLQ_AGENT.name())),
-                new Document("Show me latency and performance metrics for specific devices like iPhone or Pixel.", Map.of("agent", AgentType.NLQ_AGENT.name())),
-                new Document("Give me the list of cell phones or cell ids which are experiencing upload speeds lower than a specific threshold.", Map.of("agent", AgentType.NLQ_AGENT.name())),
-                new Document("Which region or tower has the lowest packet loss?", Map.of("agent", AgentType.NLQ_AGENT.name())),
-                new Document("Get the raw numbers for Mumbai and Berlin.", Map.of("agent", AgentType.NLQ_AGENT.name())),
+                new Document("What is the average download and upload speed customers are experiencing in Texas?", Map.of("agent", AgentType.NLQ_AGENT.name())),
+                new Document("Show me latency and performance metrics for specific network bands like 5G mmWave or 4G LTE.", Map.of("agent", AgentType.NLQ_AGENT.name())),
+                new Document("Give me the list of cities or regions which are experiencing dropped calls higher than a specific threshold.", Map.of("agent", AgentType.NLQ_AGENT.name())),
+                new Document("Which state has the lowest packet loss?", Map.of("agent", AgentType.NLQ_AGENT.name())),
+                new Document("Get the raw numbers for New York and California.", Map.of("agent", AgentType.NLQ_AGENT.name())),
 
-                // Insight Agent Intents (Analysis, Comparisons, Summaries, Explanations)
-                new Document("Analyze performance trends and give me a summary.", Map.of("agent", AgentType.INSIGHT_AGENT.name())),
-                new Document("Compare regions and explain why one is performing better or worse.", Map.of("agent", AgentType.INSIGHT_AGENT.name())),
-                new Document("Compare the latency and speed between two specific cities like Mumbai and Berlin and explain the difference.", Map.of("agent", AgentType.INSIGHT_AGENT.name())),
-                new Document("Give me an executive summary of the network status and issues for a specific phone or region.", Map.of("agent", AgentType.INSIGHT_AGENT.name())),
-                new Document("Look at the packet loss data and explain the root cause or give me an analysis.", Map.of("agent", AgentType.INSIGHT_AGENT.name()))
+                // Insight Agent Intents (Analysis, Comparisons, Summaries, Explanations, Weather/Environment impacts)
+                new Document("Analyze performance trends and give me a summary of network utilization.", Map.of("agent", AgentType.INSIGHT_AGENT.name())),
+                new Document("Compare regions and explain why one is performing better or worse regarding dropped calls.", Map.of("agent", AgentType.INSIGHT_AGENT.name())),
+                new Document("Compare the latency and speed between Urban and Rural environments and explain the difference.", Map.of("agent", AgentType.INSIGHT_AGENT.name())),
+                new Document("Give me an executive summary of the network status and how weather conditions like rain impact our mmWave bands.", Map.of("agent", AgentType.INSIGHT_AGENT.name())),
+                new Document("Look at the congestion level data and explain the root cause or give me an analysis.", Map.of("agent", AgentType.INSIGHT_AGENT.name()))
         );
 
         intentRouterStore.add(intents);

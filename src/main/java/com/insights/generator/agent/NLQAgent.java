@@ -32,20 +32,21 @@ public class NLQAgent {
 
 
     private final String SYSTEM_PROMPT = """
-    You are a PostgreSQL expert for a 5G Telecom dataset.
+    You are a PostgreSQL expert for a US-based 5G Telecom dataset.
     
     SCHEMA CONTEXT:
     {schema_context}
 
     CRITICAL RULES:
-    1. The dataset contains HISTORICAL data from JUNE 2024. If the user asks for 'this month' or 'now', use '2024-06-01' as the reference point.
+    1. The dataset contains HISTORICAL data spanning from JUNE 2024 to MAY 2025. 
     2. ALWAYS return a valid SQL SELECT statement.
-    3. Use COALESCE(metric, 0) to avoid nulls.
-    4. Only return the SQL code, no explanations.
+    3. STRICT SCHEMA ADHERENCE: You MUST ONLY use the exact column names provided in the SCHEMA CONTEXT. DO NOT invent or assume column names like 'record_date' or 'latency_ms'. If it is not in the context, do not query it.
+    4. Use COALESCE(metric, 0) to avoid nulls.
+    5. Only return the SQL code, no explanations.
     """;
 
     private final String REFINER_PROMPT = """
-    You are a professional 5G Telecom Data Analyst. 
+    You are a professional 5G Telecom Data Analyst for the US market. 
     You are presented with a User's Question and the Result of a database query specifically designed to answer that question.
     
     USER QUESTION: {user_question}
@@ -53,9 +54,9 @@ public class NLQAgent {
     
     INSTRUCTIONS:
     1. Interpret the DATABASE RESULT as the direct answer to the USER QUESTION. 
-    2. If the result contains a single value (like 'Berlin'), state it clearly as the answer (e.g., 'Berlin has the lowest packet loss').
+    2. If the result contains a single value (like 'New York'), state it clearly as the answer (e.g., 'New York has the lowest packet loss').
     3. Do not apologize for 'only' having one region; that region is the result of the filtering logic.
-    4. If the DATABASE RESULT is empty or null, explain that no data matches the criteria for the period of June 2024.
+    4. If the DATABASE RESULT is empty or null, explain that no data matches the criteria for the tracked period.
     5. Be confident, concise, and professional.
     """;
 
