@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions; // <-- NEW IMPORT
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,23 +30,25 @@ public class NLQAgent {
     private final VectorStore vectorStore;
     private final SafeSqlExecutor sqlExecutor;
     private final QueryLogRepository logRepository;
+    private final String currentModelName;
 
 
     private final String SYSTEM_PROMPT = """
-    You are a PostgreSQL expert for a 5G Telecom dataset.
+    You are a PostgreSQL expert for a US-based 5G Telecom dataset.
     
     SCHEMA CONTEXT:
     {schema_context}
 
     CRITICAL RULES:
-    1. The dataset contains HISTORICAL data from JUNE 2024. If the user asks for 'this month' or 'now', use '2024-06-01' as the reference point.
+    1. The dataset contains HISTORICAL data spanning from JUNE 2024 to MAY 2025. 
     2. ALWAYS return a valid SQL SELECT statement.
-    3. Use COALESCE(metric, 0) to avoid nulls.
-    4. Only return the SQL code, no explanations.
+    3. STRICT SCHEMA ADHERENCE: You MUST ONLY use the exact column names provided in the SCHEMA CONTEXT. DO NOT invent or assume column names like 'record_date' or 'latency_ms'. If it is not in the context, do not query it.
+    4. Use COALESCE(metric, 0) to avoid nulls.
+    5. Only return the SQL code, no explanations.
     """;
 
     private final String REFINER_PROMPT = """
-    You are a professional 5G Telecom Data Analyst. 
+    You are a professional 5G Telecom Data Analyst for the US market. 
     You are presented with a User's Question and the Result of a database query specifically designed to answer that question.
     
     USER QUESTION: {user_question}
@@ -53,9 +56,9 @@ public class NLQAgent {
     
     INSTRUCTIONS:
     1. Interpret the DATABASE RESULT as the direct answer to the USER QUESTION. 
-    2. If the result contains a single value (like 'Berlin'), state it clearly as the answer (e.g., 'Berlin has the lowest packet loss').
+    2. If the result contains a single value (like 'New York'), state it clearly as the answer (e.g., 'New York has the lowest packet loss').
     3. Do not apologize for 'only' having one region; that region is the result of the filtering logic.
-    4. If the DATABASE RESULT is empty or null, explain that no data matches the criteria for the period of June 2024.
+    4. If the DATABASE RESULT is empty or null, explain that no data matches the criteria for the tracked period.
     5. Be confident, concise, and professional.
     """;
 
@@ -67,10 +70,7 @@ public class NLQAgent {
         this.currentModelName = chatModel.getDefaultOptions().getModel();
     }
 
-    private final String currentModelName;
-
-    public Object processQuestion(String userQuestion) {
-        // 1. Retrieve Schema Metadata (RAG)
+    public Object processQuestion(String userQuestion, String requestedModel) {
         List<Document> similarDocuments = vectorStore.similaritySearch(
                 SearchRequest.builder()
                         .query(userQuestion)
@@ -82,27 +82,28 @@ public class NLQAgent {
                 .map(Document::getText)
                 .collect(Collectors.joining("\n"));
 
-        logger.info("Directing query to Model: {}", currentModelName);
+        String targetModel = (requestedModel != null && !requestedModel.trim().isEmpty()) ? requestedModel : currentModelName;
+        logger.info("Directing SQL Generation to Model: {}", targetModel);
         logger.info("Generating SQL for question: {}", userQuestion);
 
         try {
-            // 2. Generate SQL using ChatClient with system/user prompt
-            String generatedSql = chatClient.prompt()
+            // Build Prompt
+            var promptSpec = chatClient.prompt()
                     .system(sp -> sp.text(SYSTEM_PROMPT).param("schema_context", schemaContext))
-                    .user(userQuestion)
-                    .call()
-                    .content();
+                    .user(userQuestion);
 
-            // Clean markdown backticks
+            // DYNAMIC MODEL OVERRIDE
+            if (requestedModel != null && !requestedModel.trim().isEmpty()) {
+                promptSpec.options(GoogleGenAiChatOptions.builder().model(requestedModel).build());
+            }
+
+            String generatedSql = promptSpec.call().content();
             generatedSql = cleanSqlOutput(generatedSql);
             logger.info("Generated SQL for Execution: \n---\n{}\n---", generatedSql);
 
-            // 3. Execute Query
-            List<Map<String, Object>> queryResults = sqlExecutor.executeReadOnlyQuery(generatedSql);
-            return queryResults;
+            return sqlExecutor.executeReadOnlyQuery(generatedSql);
 
         } catch (Exception e) {
-            // Handle Quota (429) or other API/SQL issues gracefully
             logger.error("FULL ERROR DETAIL: ", e);
             String errorMessage = e.getMessage();
             logger.error("Error in SQL generation/execution flow: {}", errorMessage);
@@ -114,50 +115,59 @@ public class NLQAgent {
         }
     }
 
-    public Map<String, Object> processQuestionV2(String userQuestion) {
+    public Map<String, Object> processQuestionV2(String userQuestion, String requestedModel) {
         logger.info("Cache is {}", caching ? "ENABLED" : "DISABLED");
         if(caching) {
-            // 1. CHECK PERSISTENT LOG CACHE
-            Optional<QueryLog> cachedEntry = logRepository.findFirstByQuestionOrderByCreatedAtDesc(userQuestion);
-
+            String squeezedQuestion = userQuestion.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+            Optional<QueryLog> cachedEntry = logRepository.findSmartLexicalMatch(squeezedQuestion);
 
             if (cachedEntry.isPresent()) {
-                logger.info("Cache HIT: Returning stored results for: {}", userQuestion);
+                logger.info(" Cache HIT! Matched '{}' with stored question: '{}'",
+                        userQuestion, cachedEntry.get().getQuestion());
                 return Map.of(
-                        "answer", cachedEntry.get().getResponse(),
-                        "raw_data", cachedEntry.get().getRawData(),
+                        "agent", "NLQ_AGENT (Cache)",
+                        "question", userQuestion,
+                        "response", cachedEntry.get().getResponse(),
+                        "rawData", cachedEntry.get().getRawData(),
                         "source", "CACHE"
                 );
             }
         }
 
-        Object rawResponse = processQuestion(userQuestion);
+        // Pass requestedModel to raw data fetcher
+        Object rawResponse = processQuestion(userQuestion, requestedModel);
 
-        // If the inner processQuestion returned an error map, return it immediately
         if (rawResponse instanceof Map && ((Map<?, ?>) rawResponse).containsKey("error")) {
             return (Map<String, Object>) rawResponse;
         }
 
         try {
-            // Convert raw results to string for the LLM
             String dataString = rawResponse.toString();
+            String targetModel = (requestedModel != null && !requestedModel.trim().isEmpty()) ? requestedModel : currentModelName;
+            logger.info("Directing Refiner to Model: {}", targetModel);
 
-            // 2. Call LLM for the second time to "Refine" the data into English
-            String refinedAnswer = chatClient.prompt()
+            var refinerPromptSpec = chatClient.prompt()
                     .system(sp -> sp.text(REFINER_PROMPT)
                             .param("user_question", userQuestion)
                             .param("raw_data", dataString))
-                    .user("Please summarize the findings.")
-                    .call()
-                    .content();
+                    .user("Please summarize the findings.");
 
-            // 3. Save successful interaction to log
+            // DYNAMIC MODEL OVERRIDE
+            if (requestedModel != null && !requestedModel.trim().isEmpty()) {
+                refinerPromptSpec.options(GoogleGenAiChatOptions.builder().model(requestedModel).build());
+            }
+
+            String refinedAnswer = refinerPromptSpec.call().content();
+
             logRepository.save(new QueryLog(userQuestion, refinedAnswer, rawResponse.toString()));
 
             return Map.of(
-                    "answer", refinedAnswer,
-                    "raw_data", rawResponse,
-                    "source", "LLM-RAG"
+                    "agent", "NLQ_AGENT",
+                    "question", userQuestion,
+                    "response", refinedAnswer,
+                    "rawData", rawResponse,
+                    "source", "LLM-RAG",
+                    "modelUsed", targetModel // Optional: Expose which model served the request
             );
 
         } catch (Exception e) {

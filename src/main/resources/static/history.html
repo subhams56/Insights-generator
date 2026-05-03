@@ -11,7 +11,17 @@
         .table-container { background: white; border-radius: 10px; padding: 20px; }
         .badge-cache { background-color: #6c757d; }
         .badge-llm { background-color: #0d6efd; }
-        pre { white-space: pre-wrap; word-wrap: break-word; font-size: 0.85rem; background: #f1f1f1; padding: 10px; border-radius: 5px; }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 0.85rem;
+            background: #f1f1f1;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 0;
+        }
+        /* Optional: Gives a visual indicator that text is truncated on hover */
+        .truncated-content { cursor: help; }
     </style>
 </head>
 <body>
@@ -19,7 +29,7 @@
 <div class="container-fluid">
     <div class="card p-4 mb-4">
         <div class="d-flex justify-content-between align-items-center">
-            <h2>📡 Telecom Insights Generator - NLQ Agent History</h2>
+            <h2>📡 Telecom Insights Generator - NLQ & Insight Agent History</h2>
             <button onclick="loadHistory()" class="btn btn-primary">🔄 Refresh Logs</button>
         </div>
     </div>
@@ -41,40 +51,135 @@
             </tr>
             </tbody>
         </table>
+
+        <!-- Pagination Controls -->
+        <nav aria-label="Page navigation">
+            <ul class="pagination justify-content-center mt-4" id="pagination-controls">
+                <!-- Pagination buttons will be injected here -->
+            </ul>
+        </nav>
     </div>
 </div>
 
 <script>
+    // --- Pagination & Data Variables ---
+    let allLogs = [];
+    let currentPage = 1;
+    const rowsPerPage = 10; // Change this to show more/less rows per page
+    const MAX_TEXT_LENGTH = 150; // Maximum characters to show before truncating
+
+    // --- Helper to truncate long text ---
+    function truncateText(text) {
+        if (!text) return 'N/A';
+        if (text.length > MAX_TEXT_LENGTH) {
+            return text.substring(0, MAX_TEXT_LENGTH) + '...';
+        }
+        return text;
+    }
+
+    // --- Helper to escape HTML to prevent tooltip breakage ---
+    function escapeHtml(unsafe) {
+        if (!unsafe) return "";
+        return unsafe
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;")
+             .replace(/"/g, "&quot;")
+             .replace(/'/g, "&#039;");
+    }
+
+    // --- Fetch data from API ---
     async function loadHistory() {
         const tbody = document.getElementById('history-body');
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">Loading insights...</td></tr>';
 
         try {
             const response = await fetch('/api/v1/insights/history');
-            const data = await response.json();
+            allLogs = await response.json();
 
-            tbody.innerHTML = ''; // Clear loading message
-
-            if (data.length === 0) {
+            if (allLogs.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" class="text-center">No history found. Start asking questions!</td></tr>';
+                document.getElementById('pagination-controls').innerHTML = '';
                 return;
             }
 
-            data.forEach(log => {
-                const row = document.createElement('tr');
-                const date = new Date(log.createdAt).toLocaleString();
+            // Reset to page 1 and display
+            currentPage = 1;
+            renderTable();
 
-                row.innerHTML = `
-                    <td>${log.id}</td>
-                    <td><small class="text-muted">${date}</small></td>
-                    <td><strong>${log.question}</strong></td>
-                    <td class="text-primary">${log.response}</td>
-                    <td><pre>${log.rawData || 'N/A'}</pre></td>
-                `;
-                tbody.appendChild(row);
-            });
         } catch (error) {
             console.error('Error fetching history:', error);
             tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Failed to load history. Check if the server is running.</td></tr>';
+        }
+    }
+
+    // --- Render table rows for the current page ---
+    function renderTable() {
+        const tbody = document.getElementById('history-body');
+        tbody.innerHTML = '';
+
+        // Calculate start and end indices
+        const startIndex = (currentPage - 1) * rowsPerPage;
+        const endIndex = startIndex + rowsPerPage;
+        const paginatedLogs = allLogs.slice(startIndex, endIndex);
+
+        paginatedLogs.forEach(log => {
+            const row = document.createElement('tr');
+            const date = new Date(log.createdAt).toLocaleString();
+
+            const truncatedAnswer = truncateText(log.response);
+            const truncatedRaw = truncateText(log.rawData);
+
+            // Added a 'title' attribute so users can hover to see the full text if they really need to
+            row.innerHTML = `
+                <td>${log.id}</td>
+                <td><small class="text-muted">${date}</small></td>
+                <td><strong>${log.question}</strong></td>
+                <td class="text-primary truncated-content" title="${escapeHtml(log.response)}">${truncatedAnswer}</td>
+                <td><pre class="truncated-content" title="${escapeHtml(log.rawData)}">${truncatedRaw}</pre></td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        renderPagination();
+    }
+
+    // --- Render pagination buttons ---
+    function renderPagination() {
+        const paginationContainer = document.getElementById('pagination-controls');
+        paginationContainer.innerHTML = '';
+
+        const totalPages = Math.ceil(allLogs.length / rowsPerPage);
+
+        if (totalPages <= 1) return; // Hide pagination if only 1 page
+
+        // Previous Button
+        const prevLi = document.createElement('li');
+        prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+        prevLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Previous</a>`;
+        paginationContainer.appendChild(prevLi);
+
+        // Page Numbers
+        for (let i = 1; i <= totalPages; i++) {
+            const pageLi = document.createElement('li');
+            pageLi.className = `page-item ${currentPage === i ? 'active' : ''}`;
+            pageLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${i})">${i}</a>`;
+            paginationContainer.appendChild(pageLi);
+        }
+
+        // Next Button
+        const nextLi = document.createElement('li');
+        nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+        nextLi.innerHTML = `<a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Next</a>`;
+        paginationContainer.appendChild(nextLi);
+    }
+
+    // --- Handle page change ---
+    function changePage(newPage) {
+        const totalPages = Math.ceil(allLogs.length / rowsPerPage);
+        if (newPage >= 1 && newPage <= totalPages) {
+            currentPage = newPage;
+            renderTable();
         }
     }
 

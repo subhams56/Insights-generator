@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telecom Insights Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col">
+
+<header class="bg-white shadow-sm border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+    <div class="flex items-center gap-3">
+        <div class="bg-blue-600 text-white p-2 rounded-lg shadow-sm">
+            <i class="fa-solid fa-tower-cell"></i>
+        </div>
+        <div>
+            <h1 class="text-xl font-semibold text-gray-800">5G Network Assistant</h1>
+            <p class="text-xs text-gray-500">Telecom Insights Generator</p>
+        </div>
+    </div>
+
+    <div class="flex items-center gap-6">
+        <div class="relative group">
+            <button onclick="openHistory()" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1">
+                <i class="fa-solid fa-clock-rotate-left text-blue-600"></i>
+                Question Repository
+            </button>
+            <div class="absolute right-0 top-full mt-2 hidden group-hover:block w-max bg-gray-800 text-white text-xs px-3 py-1.5 rounded shadow-lg z-50">
+                All previously asked questions
+                <div class="absolute bottom-full right-6 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-gray-800"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 border-l border-gray-200 pl-6">
+                <span class="relative flex h-3 w-3">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                </span>
+            <span class="text-sm text-gray-600 font-medium hidden sm:block">System Online</span>
+        </div>
+    </div>
+</header>
+
+<main id="chat-container" class="flex-1 overflow-y-auto p-6 scrollbar-hide flex flex-col gap-6 w-full max-w-4xl mx-auto">
+    <div class="flex items-start gap-4">
+        <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 border border-blue-200">
+            <i class="fa-solid fa-robot text-blue-600 text-sm"></i>
+        </div>
+        <div class="flex flex-col gap-1 max-w-[80%]">
+            <div class="bg-white border border-gray-200 text-gray-800 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm">
+                Hello! I am your Intelligent Executive Assistant. I can help analyze latency, cell performance, and regional network metrics. How can I assist you today?
+            </div>
+        </div>
+    </div>
+</main>
+
+<footer class="bg-white border-t border-gray-200 p-4">
+    <form id="chat-form" class="max-w-4xl mx-auto flex items-end gap-3">
+        <div class="flex-1 bg-gray-50 border border-gray-300 rounded-xl flex items-center overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all">
+                <textarea
+                        id="chat-input"
+                        rows="1"
+                        placeholder="Ask about latency, regions, or network metrics..."
+                        class="w-full bg-transparent border-none focus:ring-0 resize-none py-3 px-4 text-gray-800 outline-none"
+                        style="max-height: 120px;"
+                ></textarea>
+        </div>
+        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-12 w-12 flex items-center justify-center flex-shrink-0 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+            <i class="fa-solid fa-paper-plane"></i>
+        </button>
+    </form>
+</footer>
+
+<script>
+    const form = document.getElementById('chat-form');
+    const input = document.getElementById('chat-input');
+    const container = document.getElementById('chat-container');
+    const submitBtn = form.querySelector('button');
+
+    // Function to open the history URL directly
+    function openHistory() {
+        window.open('http://localhost:9021/history.html', '_blank');
+    }
+
+    // Auto-resize textarea
+    input.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+        if(this.value.trim() === '') this.style.height = 'auto';
+    });
+
+    // Submit on Enter (Shift+Enter for new line)
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            form.dispatchEvent(new Event('submit'));
+        }
+    });
+
+    // Simple markdown parser
+    function formatText(text) {
+        if (!text) return "";
+        return text
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\n/g, '<br>');
+    }
+
+    function appendUserMessage(text) {
+        const html = `
+            <div class="flex items-start gap-4 justify-end">
+                <div class="flex flex-col gap-1 max-w-[80%] items-end">
+                    <div class="bg-blue-600 text-white px-4 py-3 rounded-2xl rounded-tr-sm shadow-sm">
+                        ${text}
+                    </div>
+                </div>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', html);
+        scrollToBottom();
+    }
+
+    function appendBotMessage(data) {
+        let textRaw = data.response || data.answer || "I received an empty response.";
+        let formattedText = formatText(textRaw);
+
+        let agent = data.agent || "System";
+        let source = data.source || data.error || "Unknown";
+
+        let isError = data.status === "rejected" || data.error === "OUT_OF_DOMAIN";
+        let badgeColor = isError ? "bg-red-50 text-red-600 border-red-200" : "bg-emerald-50 text-emerald-600 border-emerald-200";
+        let iconColor = isError ? "text-red-500" : "text-blue-600";
+        let avatarBg = isError ? "bg-red-100 border-red-200" : "bg-blue-100 border-blue-200";
+
+        const html = `
+            <div class="flex items-start gap-4">
+                <div class="w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center flex-shrink-0 border">
+                    <i class="fa-solid fa-robot ${iconColor} text-sm"></i>
+                </div>
+                <div class="flex flex-col gap-2 max-w-[80%]">
+                    <div class="bg-white border border-gray-200 text-gray-800 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm">
+                        ${formattedText}
+                    </div>
+                    <div class="flex gap-2 px-1">
+                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border ${badgeColor}">
+                            <i class="fa-solid fa-microchip text-[10px]"></i> ${agent}
+                        </span>
+                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border bg-gray-50 text-gray-600 border-gray-200">
+                            <i class="fa-solid fa-database text-[10px]"></i> ${source}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', html);
+        scrollToBottom();
+    }
+
+    function showTypingIndicator() {
+        const id = 'typing-' + Date.now();
+        const html = `
+            <div id="${id}" class="flex items-start gap-4">
+                <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 border border-blue-200">
+                    <i class="fa-solid fa-robot text-blue-600 text-sm"></i>
+                </div>
+                <div class="bg-white border border-gray-200 px-5 py-3 rounded-2xl rounded-tl-sm shadow-sm flex items-center gap-3">
+                    <i class="fa-solid fa-circle-notch fa-spin text-blue-500 text-lg"></i>
+                    <span class="text-sm font-medium text-gray-500 animate-pulse">Gathering your Insights...</span>
+                </div>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', html);
+        scrollToBottom();
+        return id;
+    }
+
+    function removeElement(id) {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+    }
+
+    function scrollToBottom() {
+        container.scrollTop = container.scrollHeight;
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const query = input.value.trim();
+        if (!query) return;
+
+        appendUserMessage(query);
+        input.value = '';
+        input.style.height = 'auto';
+        submitBtn.disabled = true;
+
+        const loaderId = showTypingIndicator();
+
+        try {
+            const response = await fetch(`http://localhost:9021/api/v1/insights/askV2?query=${encodeURIComponent(query)}`);
+
+            if (!response.ok) throw new Error('Network response was not ok');
+
+            const data = await response.json();
+
+            removeElement(loaderId);
+            appendBotMessage(data);
+
+        } catch (error) {
+            removeElement(loaderId);
+            appendBotMessage({
+                answer: "Connection failed. Please ensure the Spring Boot backend is running on port 9021.",
+                status: "rejected",
+                error: "NETWORK_ERROR",
+                agent: "System",
+                source: "Browser"
+            });
+        } finally {
+            submitBtn.disabled = false;
+            input.focus();
+        }
+    });
+</script>
+</body>
+</html>
