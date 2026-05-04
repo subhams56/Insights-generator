@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telecom Executive Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .chat-panel { transition: transform 0.3s ease-in-out; }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col overflow-hidden">
+
+<header class="bg-white shadow-sm border-b border-gray-200 px-6 py-4 flex items-center justify-between z-20 relative">
+    <div class="flex items-center gap-3">
+        <div class="bg-blue-600 text-white p-2 rounded-lg shadow-sm">
+            <i class="fa-solid fa-chart-line"></i>
+        </div>
+        <div>
+            <h1 class="text-xl font-semibold text-gray-800">Telecom US-Insights Generator</h1>
+            <p class="text-xs text-gray-500">Executive Dashboard & AI Assistant</p>
+        </div>
+    </div>
+
+    <div class="flex items-center gap-6">
+        <button onclick="window.open('/history.html', '_blank')" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <i class="fa-solid fa-clock-rotate-left text-blue-600"></i>
+            Question Repository
+        </button>
+        <button id="toggle-chat-btn" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <i class="fa-solid fa-comments"></i>
+            Ask AI Assistant
+        </button>
+        <div class="flex items-center gap-2 border-l border-gray-200 pl-6">
+            <span class="relative flex h-3 w-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+            </span>
+            <span class="text-sm text-gray-600 font-medium hidden sm:block">System Online</span>
+        </div>
+    </div>
+</header>
+
+<div class="flex flex-1 overflow-hidden relative">
+
+    <main class="flex-1 overflow-y-auto p-6 scrollbar-hide">
+        <div class="max-w-7xl mx-auto space-y-6">
+
+            <!-- NEW: Dataset Information Banner -->
+            <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl shadow-sm flex items-start gap-3">
+                <div class="text-blue-500 mt-0.5">
+                    <i class="fa-solid fa-circle-info"></i>
+                </div>
+                <div>
+                    <h4 class="text-sm font-semibold text-blue-900 mb-1">About This Dashboard's Data Scope</h4>
+                    <p class="text-xs text-blue-800 leading-relaxed">
+                        This dashboard visualizes a highly realistic, synthesized <strong>US-centric 5G telecom dataset</strong> reflecting historical tracking from <strong>June 2024 to May 2025</strong>. The metrics displayed are derived from specific US network deployments (e.g., Urban vs. Rural), varying network bands (5G mmWave, 5G Sub-6, 4G LTE), device carriers, and external factors like localized weather conditions to provide deep operational insights.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Top Row: KPI Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="kpi-container">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 animate-pulse h-24"></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 animate-pulse h-24"></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 animate-pulse h-24"></div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 animate-pulse h-24"></div>
+            </div>
+
+            <!-- Middle Row: Line Chart + Doughnut Chart -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Hourly Trend Line Chart (Takes up 2 columns) -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 lg:col-span-2">
+                    <h3 class="text-sm font-semibold text-gray-700 mb-4"><i class="fa-solid fa-wave-square text-blue-500 mr-2"></i>24-Hour Network Utilization</h3>
+                    <div class="relative h-64 w-full">
+                        <canvas id="hourlyTrendChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Dropped Calls Doughnut Chart (Takes up 1 column) -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 lg:col-span-1">
+                    <h3 class="text-sm font-semibold text-gray-700 mb-4"><i class="fa-solid fa-chart-pie text-blue-500 mr-2"></i>Dropped Calls by Band</h3>
+                    <div class="relative h-64 w-full flex items-center justify-center">
+                        <canvas id="droppedCallsPieChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Row: Bar Chart + Alert Table -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Band Performance Bar Chart (Takes up 1 column) -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 lg:col-span-1">
+                    <h3 class="text-sm font-semibold text-gray-700 mb-4"><i class="fa-solid fa-gauge-high text-emerald-500 mr-2"></i>Avg Download (Mbps)</h3>
+                    <div class="relative h-[280px] w-full">
+                        <canvas id="bandPerformanceChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Warning Table (Takes up 2 columns) -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden lg:col-span-2 flex flex-col">
+                    <div class="bg-red-50 px-5 py-3 border-b border-red-100 flex justify-between items-center shrink-0">
+                        <h3 class="text-sm font-semibold text-red-800"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Critical Alert: Worst Performing States</h3>
+                        <span class="text-xs font-medium bg-red-100 text-red-800 px-2 py-1 rounded">Action Required</span>
+                    </div>
+                    <div class="overflow-x-auto flex-1">
+                        <table class="w-full text-left text-sm text-gray-600">
+                            <thead class="bg-gray-50 border-b border-gray-200 text-gray-700 uppercase text-xs font-semibold">
+                            <tr>
+                                <th class="px-5 py-3">State</th>
+                                <th class="px-5 py-3">Total Dropped Calls</th>
+                                <th class="px-5 py-3">Avg Packet Loss (%)</th>
+                            </tr>
+                            </thead>
+                            <tbody id="worst-states-body" class="divide-y divide-gray-100">
+                            <tr><td colspan="3" class="px-5 py-4 text-center">Loading Data...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- RIGHT PANEL: Sliding AI Chat Widget -->
+    <aside id="chat-sidebar" class="w-96 bg-white border-l border-gray-200 shadow-xl flex flex-col chat-panel transform translate-x-full absolute right-0 h-full z-10 transition-transform duration-300">
+        <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center border border-blue-200">
+                    <i class="fa-solid fa-robot text-blue-600 text-sm"></i>
+                </div>
+                <span class="font-semibold text-gray-800">Insight Agent</span>
+            </div>
+            <button id="close-chat-btn" class="text-gray-400 hover:text-gray-600 focus:outline-none">
+                <i class="fa-solid fa-times"></i>
+            </button>
+        </div>
+
+        <div id="chat-container" class="flex-1 overflow-y-auto p-4 scrollbar-hide flex flex-col gap-4 text-sm">
+            <div class="flex items-start gap-3">
+                <div class="bg-gray-100 text-gray-800 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm">
+                    I see the dashboard has loaded. Ask me to dig deeper into any metric, like "Why are there so many dropped calls in NY?"
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 border-t border-gray-200 bg-white">
+            <form id="chat-form" class="flex items-end gap-2">
+                <textarea id="chat-input" rows="1" placeholder="Ask about the data..." class="flex-1 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none py-2 px-3 text-gray-800 outline-none text-sm" style="max-height: 80px;"></textarea>
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white rounded-lg h-10 w-10 flex items-center justify-center transition-colors shadow-sm shrink-0">
+                    <i class="fa-solid fa-paper-plane text-xs"></i>
+                </button>
+            </form>
+        </div>
+    </aside>
+
+</div>
+
+<script>
+    // --- 1. Dashboard UI Logic ---
+    async function loadDashboardData() {
+        try {
+            const response = await fetch('/api/v1/dashboard/full');
+            const data = await response.json();
+
+            renderKPIs(data.kpis);
+            renderWorstStates(data.worstStates);
+            renderHourlyChart(data.hourlyTrends);
+            renderBandChart(data.bandPerformance);
+            renderPieChart(data.bandPerformance);
+
+        } catch (error) {
+            console.error("Failed to load dashboard data:", error);
+            document.getElementById('kpi-container').innerHTML = `<div class="col-span-4 text-red-500 text-center p-4">Error loading dashboard data. Make sure backend is running.</div>`;
+        }
+    }
+
+    function renderKPIs(kpis) {
+        const container = document.getElementById('kpi-container');
+        container.innerHTML = `
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-center">
+                <div class="text-gray-500 text-xs font-medium uppercase tracking-wider mb-1">Quality Score</div>
+                <div class="text-3xl font-bold text-gray-800">${kpis.avg_quality_score}</div>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-red-200 bg-red-50 flex flex-col justify-center">
+                <div class="text-red-600 text-xs font-bold uppercase tracking-wider mb-1">Total Dropped Calls</div>
+                <div class="text-3xl font-bold text-red-700">${kpis.total_dropped_calls.toLocaleString()}</div>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-center">
+                <div class="text-gray-500 text-xs font-medium uppercase tracking-wider mb-1">Avg Latency (ms)</div>
+                <div class="text-3xl font-bold text-gray-800">${kpis.avg_latency_ms}</div>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-center">
+                <div class="text-gray-500 text-xs font-medium uppercase tracking-wider mb-1">Avg Download (Mbps)</div>
+                <div class="text-3xl font-bold text-gray-800">${kpis.avg_download_speed}</div>
+            </div>
+        `;
+    }
+
+    function renderWorstStates(states) {
+        const tbody = document.getElementById('worst-states-body');
+        tbody.innerHTML = '';
+        states.forEach(state => {
+            tbody.innerHTML += `
+                <tr class="hover:bg-red-50 transition-colors">
+                    <td class="px-5 py-3 font-medium text-gray-800">${state.state}</td>
+                    <td class="px-5 py-3 text-red-600 font-semibold">${state.total_dropped_calls.toLocaleString()}</td>
+                    <td class="px-5 py-3 text-gray-600">${state.avg_packet_loss}%</td>
+                </tr>
+            `;
+        });
+    }
+
+    function renderHourlyChart(hourlyData) {
+        const ctx = document.getElementById('hourlyTrendChart').getContext('2d');
+        const labels = hourlyData.map(d => d.hour_of_day + ':00');
+        const utilization = hourlyData.map(d => d.avg_utilization);
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Network Utilization (%)',
+                    data: utilization,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: false } }
+            }
+        });
+    }
+
+    function renderBandChart(bandData) {
+        const ctx = document.getElementById('bandPerformanceChart').getContext('2d');
+        const labels = bandData.map(d => d.network_band);
+        const speeds = bandData.map(d => d.avg_download_speed);
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Avg Download Speed (Mbps)',
+                    data: speeds,
+                    backgroundColor: '#10b981',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    function renderPieChart(bandData) {
+        const ctx = document.getElementById('droppedCallsPieChart').getContext('2d');
+        const labels = bandData.map(d => d.network_band);
+        const droppedCalls = bandData.map(d => d.total_dropped_calls);
+
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: droppedCalls,
+                    backgroundColor: [
+                        '#ef4444',
+                        '#f97316',
+                        '#eab308',
+                        '#3b82f6',
+                        '#8b5cf6'
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 12, padding: 15, font: { size: 11 } }
+                    }
+                }
+            }
+        });
+    }
+
+    // --- 2. Chat UI Logic ---
+    const chatSidebar = document.getElementById('chat-sidebar');
+    const toggleChatBtn = document.getElementById('toggle-chat-btn');
+    const closeChatBtn = document.getElementById('close-chat-btn');
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    const chatContainer = document.getElementById('chat-container');
+
+    toggleChatBtn.addEventListener('click', () => { chatSidebar.classList.remove('translate-x-full'); });
+    closeChatBtn.addEventListener('click', () => { chatSidebar.classList.add('translate-x-full'); });
+
+    chatInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+        if(this.value.trim() === '') this.style.height = 'auto';
+    });
+
+    chatInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            chatForm.dispatchEvent(new Event('submit'));
+        }
+    });
+
+    function formatText(text) {
+        if (!text) return "";
+        return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+    }
+
+    function scrollToBottom() {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function appendUserMessage(text) {
+        const html = `
+            <div class="flex items-start gap-3 justify-end">
+                <div class="bg-blue-600 text-white px-4 py-2 rounded-2xl rounded-tr-sm shadow-sm max-w-[85%] break-words">
+                    ${text}
+                </div>
+            </div>
+        `;
+        chatContainer.insertAdjacentHTML('beforeend', html);
+        scrollToBottom();
+    }
+
+    function showTypingIndicator() {
+        const id = 'typing-' + Date.now();
+        const html = `
+            <div id="${id}" class="flex items-start gap-3">
+                <div class="bg-gray-100 text-gray-500 px-4 py-2 rounded-2xl rounded-tl-sm shadow-sm flex items-center gap-2">
+                    <i class="fa-solid fa-circle-notch fa-spin text-blue-500"></i> Thinking...
+                </div>
+            </div>
+        `;
+        chatContainer.insertAdjacentHTML('beforeend', html);
+        scrollToBottom();
+        return id;
+    }
+
+    chatForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const query = chatInput.value.trim();
+        if (!query) return;
+
+        appendUserMessage(query);
+        chatInput.value = '';
+        chatInput.style.height = 'auto';
+
+        const loaderId = showTypingIndicator();
+
+        try {
+            const response = await fetch(`/api/v1/insights/askV2?query=${encodeURIComponent(query)}`);
+            const data = await response.json();
+
+            document.getElementById(loaderId).remove();
+
+            let textRaw = data.response || data.answer || "I received an empty response.";
+            let formattedText = formatText(textRaw);
+
+            const html = `
+                <div class="flex items-start gap-3 w-full">
+                    <div class="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0 border border-blue-200 mt-1">
+                        <i class="fa-solid fa-robot text-blue-600 text-[10px]"></i>
+                    </div>
+                    <div class="bg-gray-100 border border-gray-200 text-gray-800 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm flex-1 min-w-0">
+                        <div class="break-words w-full overflow-hidden leading-relaxed">
+                            ${formattedText}
+                        </div>
+                        <div class="mt-3 flex items-center justify-between border-t border-gray-200 pt-2">
+                            <span class="text-[10px] text-gray-500 font-medium tracking-wide uppercase bg-white px-2 py-0.5 rounded border border-gray-200">
+                                <i class="fa-solid fa-microchip mr-1"></i>${data.agent || 'System'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            chatContainer.insertAdjacentHTML('beforeend', html);
+            scrollToBottom();
+
+        } catch (error) {
+            document.getElementById(loaderId).remove();
+            chatContainer.insertAdjacentHTML('beforeend', `<div class="text-red-500 text-xs p-2">Error connecting to AI backend.</div>`);
+        }
+    });
+
+    window.onload = loadDashboardData;
+
+</script>
+</body>
+</html>
