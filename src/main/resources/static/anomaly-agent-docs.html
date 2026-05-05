@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anomaly Agent Documentation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+        .prose h2 { margin-top: 2em; margin-bottom: 0.5em; color: #1e293b; font-weight: 600; font-size: 1.5rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+        .prose h3 { margin-top: 1.5em; margin-bottom: 0.5em; color: #334155; font-weight: 600; font-size: 1.25rem; }
+        .prose p { margin-bottom: 1em; color: #475569; line-height: 1.7; }
+        .prose ul { margin-bottom: 1em; padding-left: 1.5em; color: #475569; list-style-type: disc; }
+        .prose li { margin-bottom: 0.5em; }
+        .code-block { background-color: #1e293b; color: #f8fafc; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; font-size: 0.875rem; margin-bottom: 1.5em; }
+        .scenario-box { background-color: #f0fdfa; border-left: 4px solid #0d9488; padding: 1rem; margin-bottom: 1.5em; border-radius: 0 0.5rem 0.5rem 0; }
+        .config-table { width: 100%; border-collapse: collapse; margin-top: 1em; margin-bottom: 2em; font-size: 0.9rem; }
+        .config-table th { background-color: #f1f5f9; text-align: left; padding: 0.75rem; border-bottom: 2px solid #cbd5e1; color: #334155; font-weight: 600; }
+        .config-table td { padding: 0.75rem; border-bottom: 1px solid #e2e8f0; color: #475569; vertical-align: top; }
+        .config-table code { background-color: #f1f5f9; padding: 0.2rem 0.4rem; border-radius: 0.25rem; color: #0f172a; font-size: 0.8rem; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 antialiased pb-20">
+
+<header class="bg-blue-700 text-white shadow-md py-8">
+    <div class="max-w-4xl mx-auto px-6">
+        <div class="flex items-center gap-3 mb-2">
+            <i class="fa-solid fa-robot text-3xl text-blue-300"></i>
+            <h1 class="text-3xl font-bold">Anomaly Agent v1.0</h1>
+        </div>
+        <p class="text-blue-100 text-lg">Executive Technical Documentation & System Flow</p>
+    </div>
+</header>
+
+<main class="max-w-4xl mx-auto px-6 mt-10 bg-white p-8 rounded-xl shadow-sm border border-gray-200 prose">
+
+    <!-- SECTION: Introduction -->
+    <h2>1."Anomaly Agent" (What is it?)</h2>
+    <p>
+        Traditionally, dashboards are <strong>Reactive</strong>—they sit idly waiting for a human to log in, look at a chart, or ask a question. If a critical network failure happens at 2:00 AM, nobody knows until a user explicitly checks.
+    </p>
+    <p>
+        The <strong>Anomaly Agent</strong> transforms our system into a <strong>Proactive Network Operations Center (NOC)</strong>. It is an automated, 24/7 background watchdog. It constantly scans the telecom database for mathematical outliers, diagnoses the root cause (using pure logic or AI), and pushes urgent, human-readable alerts directly to the stakeholder's dashboard.
+    </p>
+
+    <!-- SECTION: Architecture & Image Placeholder -->
+    <h2>2. High-Level Architecture & Process Flow</h2>
+    <p>
+        The Anomaly Agent operates completely decoupled from the user's browser. It sits in the backend, bridging our "Fast Data" (SQL) and "Smart Data" (LLM) layers. Below is the end-to-end architectural flow.
+    </p>
+
+    <!-- IMAGE PLACEHOLDER -->
+    <div class="my-8 border-2 border-dashed border-gray-300 rounded-xl p-2 bg-gray-50 text-center">
+        <img src="anomaly-agent-flow.png" alt="Anomaly Agent Architecture Flow Diagram" class="w-full h-auto rounded-lg shadow-sm mx-auto">
+        <p class="text-xs text-gray-500 mt-2 italic">Figure 1: End-to-End Proactive NOC Architecture</p>
+    </div>
+
+    <h3>The 8-Step Lifecycle</h3>
+    <ol class="list-decimal pl-5 text-gray-600 space-y-2 mb-6">
+        <li><strong>The Trigger:</strong> The <code>AnomalyAgent</code> wakes up every 15 minutes to run background SQL watchdog queries against the telecom database.</li>
+        <li><strong>The Scan:</strong> Hardcoded SQL queries check for mathematical anomalies (e.g., regions with a <code>quality_score &lt; 0.40</code> and high dropped calls).</li>
+        <li><strong>Alert Suppression:</strong> Before generating a new alert, the agent checks the <code>anomaly_alerts</code> table to ensure that specific issue hasn't already been reported in the last 4 hours, preventing alert fatigue.</li>
+        <li><strong>AI Packaging:</strong> For complex anomalies, the agent packages the raw SQL JSON data and sends it to the Gemini LLM for diagnostic analysis.</li>
+        <li><strong>Diagnosis:</strong> Gemini analyzes the data points (like correlated weather or band types) and returns a human-readable, markdown-formatted executive alert.</li>
+        <li><strong>Persistence:</strong> The agent saves this newly generated alert (along with its severity and raw data) into the database as an unread notification.</li>
+        <li><strong>UI Polling:</strong> Every 60 seconds, the frontend dashboard polls the <code>/api/v1/alerts/unread</code> endpoint to fetch any new alerts.</li>
+        <li><strong>Executive Delivery:</strong> The UI illuminates a red notification bell and displays the detailed, actionable intelligence directly to the stakeholder.</li>
+    </ol>
+
+    <!-- SECTION: Deep Dive -->
+    <h2>3. Deep Dive: SQL Watchdogs & Real-World Scenarios</h2>
+    <p>
+        The agent utilizes a Hybrid Cost-Saving Model. We do not feed the whole database to the AI. Instead, we use highly specific SQL queries to find the "needle in the haystack." Some anomalies require AI to summarize, while others are pure hardware faults that are hardcoded to save API costs.
+    </p>
+
+    <!-- WATCHDOG 1 -->
+    <h3>Watchdog 1: Complex Quality Degradation (LLM-Powered)</h3>
+    <p><strong>What it gathers:</strong> Searches for localized network collapses by filtering for sectors where the quality score has plummeted while experiencing a surge in dropped calls. It groups data by location, network band, and weather to provide context to the AI.</p>
+    <div class="code-block">
+<pre><code>SELECT state, city, network_band, weather_condition,
+       ROUND(AVG(quality_score), 2) as avg_quality,
+       SUM(dropped_calls) as recent_dropped_calls
+FROM refined_network_metrics
+WHERE quality_score < 0.40 AND dropped_calls > 5
+GROUP BY state, city, network_band, weather_condition
+ORDER BY recent_dropped_calls DESC
+LIMIT 3;</code></pre>
+    </div>
+    <div class="scenario-box">
+        <h4 class="font-bold text-teal-800 mb-1"><i class="fa-solid fa-cloud-bolt mr-2"></i>Real-World Scenario</h4>
+        <p class="text-teal-900 text-sm mb-0"><strong>The Incident:</strong> A severe thunderstorm rolls through Los Angeles. "Rain fade" severely degrades the n78 5G spectrum. <br><strong>The Value:</strong> Gemini reads the JSON, connects the dots between "n78 band", "Los Angeles", and "Heavy Rain", and writes a contextual alert: <em>"Investigate an urgent degradation of the n78 mid-band spectrum across Los Angeles. Preliminary diagnostics indicate weather-induced signal degradation..."</em></p>
+    </div>
+
+    <!-- WATCHDOG 2 -->
+    <h3>Watchdog 2: mmWave Latency Fault (Pure-SQL)</h3>
+    <p><strong>What it gathers:</strong> Monitors physical hardware SLAs. It explicitly filters for ultra-fast mmWave bands (n258, n260). If average latency spikes above acceptable thresholds (e.g., > 100ms), it instantly flags a physical infrastructure failure.</p>
+    <div class="code-block">
+<pre><code>SELECT state, city, network_band, MAX(avg_latency_ms) as peak_latency
+FROM refined_network_metrics
+WHERE network_band IN ('n258', 'n260') AND avg_latency_ms > 100
+GROUP BY state, city, network_band
+ORDER BY peak_latency DESC
+LIMIT 1;</code></pre>
+    </div>
+    <div class="scenario-box">
+        <h4 class="font-bold text-teal-800 mb-1"><i class="fa-solid fa-tower-cell mr-2"></i>Real-World Scenario</h4>
+        <p class="text-teal-900 text-sm mb-0"><strong>The Incident:</strong> A mmWave small-cell antenna's backhaul fiber cable feeding the tower is damaged by construction.<br><strong>The Value:</strong> No AI is needed. High latency on mmWave is always a physical issue. The Java code instantly formats this: <em>"Hardware Alert: High-frequency mmWave bands in Chicago are experiencing severe latency spikes of 145ms. Dispatch field engineers to check backhaul transport."</em></p>
+    </div>
+
+    <!-- WATCHDOG 3 -->
+    <h3>Watchdog 3: Device & Firmware Conflict (Pure-SQL)</h3>
+    <p><strong>What it gathers:</strong> Ignores geography and weather, instead aggregating all dropped calls globally and grouping them solely by <code>device_model</code> and <code>carrier</code>. It triggers only if a single phone-and-carrier combination hits a massive volume of failures.</p>
+    <div class="code-block">
+<pre><code>SELECT device_model, carrier, SUM(dropped_calls) as total_drops
+FROM refined_network_metrics
+GROUP BY device_model, carrier
+HAVING SUM(dropped_calls) > 5000
+ORDER BY total_drops DESC
+LIMIT 1;</code></pre>
+    </div>
+    <div class="scenario-box">
+        <h4 class="font-bold text-teal-800 mb-1"><i class="fa-solid fa-mobile-screen-button mr-2"></i>Real-World Scenario</h4>
+        <p class="text-teal-900 text-sm mb-0"><strong>The Incident:</strong> An OEM pushes a flawed over-the-air (OTA) modem firmware update. Suddenly, specific users on a specific carrier start dropping calls nationwide, while others remain fine.<br><strong>The Value:</strong> Finding this manually on a map is nearly impossible because drops are scattered geographically. This query isolates the software conflict: <em>"Vendor Interoperability Alert: An unusually high concentration of dropped calls has been detected for Galaxy S24 users on the AT&T profile. Check recent OEM firmware updates."</em></p>
+    </div>
+
+    <!-- SECTION: Configuration & Threshold Tuning -->
+    <h2>4. Configuration & Threshold Tuning</h2>
+    <p>
+        To keep our architecture robust and prevent hardcoding, the Anomaly Agent is fully parameterized. The triggers dictating what constitutes an "anomaly" are defined in our <code>application.properties</code> file. This allows NOC managers to tune the sensitivity of the alerts without requiring engineering teams to recompile the Java application.
+    </p>
+    <p>
+        Below is a breakdown of the agent's core properties, how their baselines were aligned with industry SLAs, and how we temporarily override them to simulate faults during testing.
+    </p>
+
+    <table class="config-table">
+        <thead>
+        <tr>
+            <th>Property Name</th>
+            <th>Production Baseline</th>
+            <th>Test Value</th>
+            <th>Business & Data Rationale</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr>
+            <td><code>anomaly.agent.polling-rate</code></td>
+            <td><strong>900000</strong> (15 mins)</td>
+            <td><strong>10000</strong> (10 secs)</td>
+            <td>Determines how often the agent wakes up to query the DB. 15 minutes is standard to prevent database strain while remaining proactive. Lowered to 10 seconds purely to witness real-time UI updates during testing.</td>
+        </tr>
+        <tr>
+            <td><code>anomaly.agent.suppression-hours</code></td>
+            <td><strong>4</strong></td>
+            <td><strong>4</strong></td>
+            <td>The core mechanism for preventing alert fatigue. If a tower goes down, it may take hours to repair. This ensures executives receive exactly one actionable notification per incident per 4-hour window, rather than continuous spam.</td>
+        </tr>
+        <tr>
+            <td><code>anomaly.agent.threshold.quality-score</code></td>
+            <td><strong>0.40</strong></td>
+            <td><strong>0.40</strong></td>
+            <td>Defines a "Critical Degradation." In our metric index (0.0 to 1.0), anything below 0.40 indicates massive packet loss and unusable network speeds requiring immediate LLM diagnosis.</td>
+        </tr>
+        <tr>
+            <td><code>anomaly.agent.threshold.mmwave-latency</code></td>
+            <td><strong>100</strong> (ms)</td>
+            <td><strong>5</strong> (ms)</td>
+            <td>mmWave (5G High-Band) SLA guarantees latency under 20ms. A 100ms threshold guarantees a catastrophic physical fault (e.g., fiber cut or misalignment). <em>Testing Note: Because our simulated network dataset is exceptionally healthy (max latency ~10ms), we lowered this to 5ms to artificially force the watchdog to trip and test the UI.</em></td>
+        </tr>
+        <tr>
+            <td><code>anomaly.agent.threshold.device-fault-drops</code></td>
+            <td><strong>5000</strong></td>
+            <td><strong>100</strong></td>
+            <td>Triggers the Firmware Conflict alert. A nationwide bad firmware push will rapidly generate thousands of localized dropped calls for a specific carrier/device combo. <em>Testing Note: Lowered to 100 because our synthesized dataset evenly distributes drops across multiple devices, preventing a single device from hitting the 5000 mark naturally.</em></td>
+        </tr>
+        </tbody>
+    </table>
+
+    <!-- SECTION: Business Value -->
+    <h2>5. Business Value Alignment</h2>
+    <ul class="mt-4">
+        <li><strong>Scale:</strong> An executive cannot manually filter a dashboard to find that a specific band in a specific city is failing. The agent hunts for them.</li>
+        <li><strong>Cost Optimization:</strong> By relying on mathematical SQL heuristics, we only call the expensive LLM API when we have a confirmed, complex problem that needs summarizing.</li>
+        <li><strong>Alert Fatigue Prevention:</strong> The built-in Debouncing logic ensures that if an outage takes 6 hours to fix, the executive gets <em>one</em> actionable alert, not 24 spam notifications.</li>
+        <li><strong>MTTR (Mean Time To Resolution):</strong> When the executive logs in, the red bell instantly provides the exact location, cause, and recommended action—saving hours of manual troubleshooting.</li>
+    </ul>
+
+</main>
+
+<footer class="text-center text-gray-400 text-sm mt-10">
+    &copy; 2026 Telecom Insights Generator - Internal Documentation
+</footer>
+
+</body>
+</html>
