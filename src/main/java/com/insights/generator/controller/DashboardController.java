@@ -39,14 +39,21 @@ public class DashboardController {
         return ResponseEntity.ok(dashboardRepository.getWorstPerformingStates());
     }
 
-    // Optional: A single endpoint that returns everything at once to save frontend API calls
+    // NEW: Individual endpoint for Carrier data
+    @GetMapping("/breakdown/carriers")
+    public ResponseEntity<List<Map<String, Object>>> getCarrierPerformance() {
+        return ResponseEntity.ok(dashboardRepository.getCarrierPerformance());
+    }
+
+    // UPDATED: Include carrierPerformance in the main payload
     @GetMapping("/full")
     public ResponseEntity<Map<String, Object>> getFullDashboard() {
         return ResponseEntity.ok(Map.of(
                 "kpis", dashboardRepository.getAggregateKPIs(),
                 "hourlyTrends", dashboardRepository.getHourlyUtilizationTrend(),
                 "bandPerformance", dashboardRepository.getBandPerformance(),
-                "worstStates", dashboardRepository.getWorstPerformingStates()
+                "worstStates", dashboardRepository.getWorstPerformingStates(),
+                "carrierPerformance", dashboardRepository.getCarrierPerformance() // <-- Added here
         ));
     }
 }
