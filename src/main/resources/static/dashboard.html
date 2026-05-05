@@ -30,6 +30,30 @@
     </div>
 
     <div class="flex items-center gap-6">
+
+        <!-- NEW: Notification Bell & Dropdown -->
+        <div class="relative">
+            <button id="notification-btn" class="relative p-2 text-gray-500 hover:text-blue-600 focus:outline-none transition-colors">
+                <i class="fa-solid fa-bell text-xl"></i>
+                <!-- Badge (Hidden by default, shown via JS if alerts exist) -->
+                <span id="notification-badge" class="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-[10px] font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/4 bg-red-600 rounded-full hidden">
+                    0
+                </span>
+            </button>
+
+            <!-- Dropdown Panel -->
+            <div id="notification-dropdown" class="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border border-gray-200 hidden z-50 flex flex-col max-h-[500px]">
+                <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center rounded-t-xl">
+                    <h3 class="font-semibold text-gray-800"><i class="fa-solid fa-triangle-exclamation text-red-500 mr-2"></i>System Alerts</h3>
+                    <button onclick="markAllAsRead()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark all as read</button>
+                </div>
+                <!-- Alert List Container -->
+                <div id="alert-list" class="flex-1 overflow-y-auto p-2">
+                    <div class="text-center p-4 text-sm text-gray-500">Loading alerts...</div>
+                </div>
+            </div>
+        </div>
+
         <button onclick="window.open('/history.html', '_blank')" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             <i class="fa-solid fa-clock-rotate-left text-blue-600"></i>
             Question Repository
@@ -53,7 +77,7 @@
     <main class="flex-1 overflow-y-auto p-6 scrollbar-hide">
         <div class="max-w-7xl mx-auto space-y-6">
 
-            <!-- NEW: Dataset Information Banner -->
+            <!-- Dataset Information Banner -->
             <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl shadow-sm flex items-start gap-3">
                 <div class="text-blue-500 mt-0.5">
                     <i class="fa-solid fa-circle-info"></i>
@@ -76,7 +100,7 @@
 
             <!-- Middle Row: Line Chart + Doughnut Chart -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Hourly Trend Line Chart (Takes up 2 columns) -->
+                <!-- Hourly Trend Line Chart -->
                 <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 lg:col-span-2">
                     <h3 class="text-sm font-semibold text-gray-700 mb-4"><i class="fa-solid fa-wave-square text-blue-500 mr-2"></i>24-Hour Network Utilization</h3>
                     <div class="relative h-64 w-full">
@@ -84,7 +108,7 @@
                     </div>
                 </div>
 
-                <!-- Dropped Calls Doughnut Chart (Takes up 1 column) -->
+                <!-- Dropped Calls Doughnut Chart -->
                 <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 lg:col-span-1">
                     <h3 class="text-sm font-semibold text-gray-700 mb-4"><i class="fa-solid fa-chart-pie text-blue-500 mr-2"></i>Dropped Calls by Band</h3>
                     <div class="relative h-64 w-full flex items-center justify-center">
@@ -95,7 +119,7 @@
 
             <!-- Bottom Row: Bar Chart + Alert Table -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Band Performance Bar Chart (Takes up 1 column) -->
+                <!-- Band Performance Bar Chart -->
                 <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 lg:col-span-1">
                     <h3 class="text-sm font-semibold text-gray-700 mb-4"><i class="fa-solid fa-gauge-high text-emerald-500 mr-2"></i>Avg Download (Mbps)</h3>
                     <div class="relative h-[280px] w-full">
@@ -103,7 +127,7 @@
                     </div>
                 </div>
 
-                <!-- Warning Table (Takes up 2 columns) -->
+                <!-- Warning Table -->
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden lg:col-span-2 flex flex-col">
                     <div class="bg-red-50 px-5 py-3 border-b border-red-100 flex justify-between items-center shrink-0">
                         <h3 class="text-sm font-semibold text-red-800"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Critical Alert: Worst Performing States</h3>
@@ -412,7 +436,122 @@
         }
     });
 
-    window.onload = loadDashboardData;
+    // ==========================================
+    // 3. ANOMALY AGENT NOTIFICATION LOGIC
+    // ==========================================
+    const notificationBtn = document.getElementById('notification-btn');
+    const notificationDropdown = document.getElementById('notification-dropdown');
+    const notificationBadge = document.getElementById('notification-badge');
+    const alertList = document.getElementById('alert-list');
+    let unreadAlerts = [];
+
+    // Toggle dropdown visibility
+    notificationBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        notificationDropdown.classList.toggle('hidden');
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!notificationBtn.contains(e.target) && !notificationDropdown.contains(e.target)) {
+            notificationDropdown.classList.add('hidden');
+        }
+    });
+
+    // Fetch alerts from the backend
+    async function fetchAlerts() {
+        try {
+            const response = await fetch('/api/v1/alerts/unread');
+            unreadAlerts = await response.json();
+            updateNotificationUI();
+        } catch (error) {
+            console.error("Failed to fetch alerts:", error);
+        }
+    }
+
+    // Render the alerts in the dropdown
+    function updateNotificationUI() {
+        // Update Badge
+        if (unreadAlerts.length > 0) {
+            notificationBadge.textContent = unreadAlerts.length;
+            notificationBadge.classList.remove('hidden');
+            // Make the bell shake slightly if there's a critical alert
+            if(unreadAlerts.some(a => a.severity === 'CRITICAL')) {
+                 notificationBtn.classList.add('animate-pulse', 'text-red-500');
+            }
+        } else {
+            notificationBadge.classList.add('hidden');
+            notificationBtn.classList.remove('animate-pulse', 'text-red-500');
+        }
+
+        // Render List
+        alertList.innerHTML = '';
+        if (unreadAlerts.length === 0) {
+            alertList.innerHTML = `
+                <div class="flex flex-col items-center justify-center p-8 text-gray-400">
+                    <i class="fa-solid fa-check-circle text-4xl mb-3 text-green-400"></i>
+                    <p class="text-sm font-medium">Network is healthy.</p>
+                    <p class="text-xs">No active anomalies detected.</p>
+                </div>`;
+            return;
+        }
+
+        unreadAlerts.forEach(alert => {
+            const date = new Date(alert.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const isCritical = alert.severity === 'CRITICAL';
+            const iconClass = isCritical ? 'fa-circle-xmark text-red-500' : 'fa-triangle-exclamation text-amber-500';
+            const bgClass = isCritical ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100';
+
+            const alertHtml = `
+                <div class="p-3 mb-2 rounded-lg border ${bgClass} flex gap-3 relative group">
+                    <div class="pt-1">
+                        <i class="fa-solid ${iconClass}"></i>
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex justify-between items-start mb-1">
+                            <h4 class="text-sm font-bold text-gray-800">${alert.title}</h4>
+                            <span class="text-[10px] text-gray-500 font-medium whitespace-nowrap ml-2">${date}</span>
+                        </div>
+                        <div class="text-xs text-gray-700 leading-relaxed alert-message">
+                            ${formatText(alert.message)}
+                        </div>
+                    </div>
+                    <!-- Mark as read 'X' button appears on hover -->
+                    <button onclick="markAlertAsRead(${alert.id})" class="absolute top-2 right-2 text-gray-400 hover:text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity" title="Dismiss">
+                        <i class="fa-solid fa-times"></i>
+                    </button>
+                </div>
+            `;
+            alertList.insertAdjacentHTML('beforeend', alertHtml);
+        });
+    }
+
+    // Mark a single alert as read
+    async function markAlertAsRead(id) {
+        try {
+            await fetch(`/api/v1/alerts/${id}/read`, { method: 'POST' });
+            // Optimistically update UI
+            unreadAlerts = unreadAlerts.filter(a => a.id !== id);
+            updateNotificationUI();
+        } catch (error) {
+            console.error("Failed to dismiss alert:", error);
+        }
+    }
+
+    // Mark all alerts as read
+    async function markAllAsRead() {
+        for (const alert of unreadAlerts) {
+            await markAlertAsRead(alert.id);
+        }
+    }
+
+    // Poll for new alerts every 60 seconds
+    setInterval(fetchAlerts, 60000);
+
+    window.onload = () => {
+        loadDashboardData();
+        fetchAlerts();
+    };
 
 </script>
 </body>
