@@ -31,11 +31,10 @@
 
     <div class="flex items-center gap-6">
 
-        <!-- NEW: Notification Bell & Dropdown -->
+        <!-- Notification Bell & Dropdown -->
         <div class="relative">
             <button id="notification-btn" class="relative p-2 text-gray-500 hover:text-blue-600 focus:outline-none transition-colors">
                 <i class="fa-solid fa-bell text-xl"></i>
-                <!-- Badge (Hidden by default, shown via JS if alerts exist) -->
                 <span id="notification-badge" class="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-[10px] font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/4 bg-red-600 rounded-full hidden">
                     0
                 </span>
@@ -47,7 +46,6 @@
                     <h3 class="font-semibold text-gray-800"><i class="fa-solid fa-triangle-exclamation text-red-500 mr-2"></i>System Alerts</h3>
                     <button onclick="markAllAsRead()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark all as read</button>
                 </div>
-                <!-- Alert List Container -->
                 <div id="alert-list" class="flex-1 overflow-y-auto p-2">
                     <div class="text-center p-4 text-sm text-gray-500">Loading alerts...</div>
                 </div>
@@ -150,6 +148,39 @@
                 </div>
             </div>
 
+            <!-- NEW ROW: Carrier Breakdown -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Carrier Quality Scores Horizontal Bar Chart -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 lg:col-span-1">
+                    <h3 class="text-sm font-semibold text-gray-700 mb-4"><i class="fa-solid fa-satellite-dish text-purple-500 mr-2"></i>Carrier Quality Scores</h3>
+                    <div class="relative h-[280px] w-full">
+                        <canvas id="carrierQualityChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Carrier Performance Table -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden lg:col-span-2 flex flex-col">
+                    <div class="bg-purple-50 px-5 py-3 border-b border-purple-100 flex justify-between items-center shrink-0">
+                        <h3 class="text-sm font-semibold text-purple-800"><i class="fa-solid fa-network-wired mr-2"></i>Carrier Performance Breakdown</h3>
+                        <span class="text-xs font-medium bg-purple-100 text-purple-800 px-2 py-1 rounded">Vendor Analysis</span>
+                    </div>
+                    <div class="overflow-x-auto flex-1">
+                        <table class="w-full text-left text-sm text-gray-600">
+                            <thead class="bg-gray-50 border-b border-gray-200 text-gray-700 uppercase text-xs font-semibold">
+                            <tr>
+                                <th class="px-5 py-3">Carrier</th>
+                                <th class="px-5 py-3">Avg Dropped Calls</th>
+                                <th class="px-5 py-3">Avg Download (Mbps)</th>
+                            </tr>
+                            </thead>
+                            <tbody id="carrier-table-body" class="divide-y divide-gray-100">
+                            <tr><td colspan="3" class="px-5 py-4 text-center">Loading Data...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </main>
 
@@ -199,6 +230,12 @@
             renderHourlyChart(data.hourlyTrends);
             renderBandChart(data.bandPerformance);
             renderPieChart(data.bandPerformance);
+
+            // Render newly added Carrier Performance metrics
+            if (data.carrierPerformance) {
+                renderCarrierChart(data.carrierPerformance);
+                renderCarrierTable(data.carrierPerformance);
+            }
 
         } catch (error) {
             console.error("Failed to load dashboard data:", error);
@@ -331,6 +368,53 @@
         });
     }
 
+    function renderCarrierChart(carrierData) {
+        const ctx = document.getElementById('carrierQualityChart').getContext('2d');
+        const labels = carrierData.map(d => d.carrier);
+        const scores = carrierData.map(d => d.avg_quality_score);
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Avg Quality Score',
+                    data: scores,
+                    backgroundColor: '#a855f7',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                indexAxis: 'y', // Renders horizontal bar chart
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: {
+                        max: 1.0,
+                        min: 0,
+                        title: { display: true, text: 'Quality Score (0-1)' }
+                    }
+                }
+            }
+        });
+    }
+
+function renderCarrierTable(carrierData) {
+        const tbody = document.getElementById('carrier-table-body');
+        tbody.innerHTML = '';
+        carrierData.forEach(carrier => {
+            tbody.innerHTML += `
+                <tr class="hover:bg-purple-50 transition-colors">
+                    <td class="px-5 py-3 font-medium text-gray-800">${carrier.carrier}</td>
+                    <!-- Updated to use avg_dropped_calls -->
+                    <td class="px-5 py-3 text-purple-600 font-semibold">${carrier.avg_dropped_calls}</td>
+                    <td class="px-5 py-3 text-gray-600">${carrier.avg_download_speed}</td>
+                </tr>
+            `;
+        });
+    }
+
     // --- 2. Chat UI Logic ---
     const chatSidebar = document.getElementById('chat-sidebar');
     const toggleChatBtn = document.getElementById('toggle-chat-btn');
@@ -436,9 +520,7 @@
         }
     });
 
-    // ==========================================
-    // 3. ANOMALY AGENT NOTIFICATION LOGIC
-    // ==========================================
+    // --- 3. ANOMALY AGENT NOTIFICATION LOGIC ---
     const notificationBtn = document.getElementById('notification-btn');
     const notificationDropdown = document.getElementById('notification-dropdown');
     const notificationBadge = document.getElementById('notification-badge');

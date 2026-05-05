@@ -78,11 +78,11 @@ public class DashboardRepository {
             SELECT 
                 carrier,
                 ROUND(AVG(quality_score), 2) AS avg_quality_score,
-                SUM(dropped_calls) AS total_dropped_calls,
+                ROUND(AVG(dropped_calls), 2) AS avg_dropped_calls,
                 ROUND(AVG(download_speed_mbps), 2) AS avg_download_speed
             FROM refined_network_metrics
             GROUP BY carrier
-            ORDER BY total_dropped_calls DESC
+            ORDER BY avg_quality_score DESC
             """;
         return jdbcTemplate.queryForList(sql);
     }
