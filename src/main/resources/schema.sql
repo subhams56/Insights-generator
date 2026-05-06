@@ -44,3 +44,22 @@ CREATE TABLE IF NOT EXISTS anomaly_alerts (
     raw_data JSONB,       -- Storing the SQL result that triggered it
     is_read BOOLEAN DEFAULT FALSE
 );
+
+
+CREATE TABLE realtime_hourly_metrics (
+
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMP,
+    state VARCHAR(20),
+    city VARCHAR(100),
+    network_band VARCHAR(50),
+    avg_latency_ms NUMERIC,
+    avg_download_speed_mbps NUMERIC,
+    avg_packet_loss_pct NUMERIC,
+    avg_quality_score NUMERIC,
+    total_active_users INTEGER,
+    congestion_level VARCHAR(20),
+    active_alerts INTEGER,
+    severity VARCHAR(20),
+    summary TEXT
+);
