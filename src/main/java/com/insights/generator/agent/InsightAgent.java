@@ -3,6 +3,10 @@ package com.insights.generator.agent;
 import com.insights.generator.model.QueryLog;
 import com.insights.generator.repository.QueryLogRepository;
 import com.insights.generator.repository.SafeSqlExecutor;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -14,27 +18,23 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
-
 @Service
 public class InsightAgent {
 
-    private static final Logger logger = LoggerFactory.getLogger(InsightAgent.class);
+	private static final Logger logger = LoggerFactory.getLogger(InsightAgent.class);
 
-    private final ChatClient chatClient;
-    private final NLQAgent nlqAgent;
-    private final QueryLogRepository logRepository;
-    private final VectorStore vectorStore;
-    private final SafeSqlExecutor sqlExecutor;
-    private final String defaultModel; // Storing default for logging
+	private final ChatClient chatClient;
+	private final NLQAgent nlqAgent;
+	private final QueryLogRepository logRepository;
+	private final VectorStore vectorStore;
+	private final SafeSqlExecutor sqlExecutor;
+	private final String defaultModel; // Storing default for logging
 
-    @Value("${agent.cache.enabled:true}")
-    private boolean cacheEnabled;
+	@Value("${agent.cache.enabled:true}")
+	private boolean cacheEnabled;
 
-    private final String SYSTEM_PROMPT = """
+	private final String SYSTEM_PROMPT =
+		"""
 You are a PostgreSQL expert for a US-based 5G Telecom analytics dataset.
 
 SCHEMA CONTEXT:
@@ -87,8 +87,8 @@ CRITICAL RULES:
 16. RETURN ONLY RAW SQL. NO COMMENTS. NO EXPLANATION. NO PREFIX TEXT.
 """;
 
-
-    private static final String INSIGHT_SYSTEM_PROMPT = """
+	private static final String INSIGHT_SYSTEM_PROMPT =
+		"""
 You are a Senior US Telecom Network Data Analyst.
 
 RAW DATA:
@@ -134,181 +134,190 @@ INSTRUCTIONS:
 11. Be concise, professional, analytical, and executive-friendly.
 """;
 
-    public InsightAgent(ChatClient.Builder chatClientBuilder,
-                        NLQAgent nlqAgent,
-                        QueryLogRepository logRepository,
-                        @Value("${spring.ai.openai.chat.options.model}") String model, VectorStore vectorStore, SafeSqlExecutor sqlExecutor) {
+	public InsightAgent(
+		ChatClient.Builder chatClientBuilder,
+		NLQAgent nlqAgent,
+		QueryLogRepository logRepository,
+		@Value("${spring.ai.openai.chat.options.model}") String model,
+		VectorStore vectorStore,
+		SafeSqlExecutor sqlExecutor
+	) {
+		this.logRepository = logRepository;
+		this.nlqAgent = nlqAgent;
+		this.vectorStore = vectorStore;
+		this.sqlExecutor = sqlExecutor;
+		this.defaultModel = model;
 
-        this.logRepository = logRepository;
-        this.nlqAgent = nlqAgent;
-        this.vectorStore = vectorStore;
-        this.sqlExecutor = sqlExecutor;
-        this.defaultModel = model;
+		OpenAiChatOptions options = OpenAiChatOptions.builder().build();
+		options.setModel(model);
 
-        OpenAiChatOptions options = OpenAiChatOptions.builder().build();
-        options.setModel(model);
+		this.chatClient = chatClientBuilder.defaultOptions(options).build();
+	}
 
-        this.chatClient = chatClientBuilder
-                .defaultOptions(options)
-                .build();
-    }
+	public Map<String, Object> analyze(String userQuestion, String requestedModel) {
+		String targetModel = (requestedModel != null && !requestedModel.trim().isEmpty())
+			? requestedModel
+			: defaultModel;
+		logger.info("Insight Agent beginning analysis for: '{}' using Model: {}", userQuestion, targetModel);
 
-    public Map<String, Object> analyze(String userQuestion, String requestedModel) {
-        String targetModel = (requestedModel != null && !requestedModel.trim().isEmpty()) ? requestedModel : defaultModel;
-        logger.info("Insight Agent beginning analysis for: '{}' using Model: {}", userQuestion, targetModel);
+		if (cacheEnabled) {
+			String squeezedQuestion = userQuestion.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+			Optional<QueryLog> cachedEntry = logRepository.findSmartLexicalMatch(squeezedQuestion);
 
-        if (cacheEnabled) {
-            String squeezedQuestion = userQuestion.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
-            Optional<QueryLog> cachedEntry = logRepository.findSmartLexicalMatch(squeezedQuestion);
+			if (cachedEntry.isPresent()) {
+				logger.info(
+					" Cache HIT! Matched '{}' with stored question: '{}'",
+					userQuestion,
+					cachedEntry.get().getQuestion()
+				);
 
-            if (cachedEntry.isPresent()) {
-                logger.info(" Cache HIT! Matched '{}' with stored question: '{}'",
-                        userQuestion, cachedEntry.get().getQuestion());
+				return Map.of(
+					"agent",
+					"INSIGHT_AGENT (Cached)",
+					"question",
+					userQuestion,
+					"response",
+					cachedEntry.get().getResponse(),
+					"rawData",
+					cachedEntry.get().getRawData(),
+					"source",
+					"CACHE"
+				);
+			}
+		}
 
-                return Map.of(
-                        "agent", "INSIGHT_AGENT (Cached)",
-                        "question", userQuestion,
-                        "response", cachedEntry.get().getResponse(),
-                        "rawData", cachedEntry.get().getRawData(),
-                        "source", "CACHE"
-                );
-            }
-        }
+		try {
+			// Pass model downstream for the SQL generation LLM call
+			List<Map<String, Object>> rawData = fetchRawDataOnly(userQuestion, requestedModel);
 
-        try {
-            // Pass model downstream for the SQL generation LLM call
-            List<Map<String, Object>> rawData = fetchRawDataOnly(userQuestion, requestedModel);
+			if (rawData == null || rawData.isEmpty()) {
+				return Map.of(
+					"question",
+					userQuestion,
+					"response",
+					"No data found to analyze for this request.",
+					"agent",
+					"INSIGHT_AGENT"
+				);
+			}
 
-            if (rawData == null || rawData.isEmpty()) {
-                return Map.of(
-                        "question", userQuestion,
-                        "response", "No data found to analyze for this request.",
-                        "agent", "INSIGHT_AGENT"
-                );
-            }
+			String rawDataString;
 
-            String rawDataString;
+			if (rawData.size() > 50) {
+				logger.warn("Large dataset detected ({} rows). Truncating before insight generation.", rawData.size());
 
-            if (rawData.size() > 50) {
-                logger.warn("Large dataset detected ({} rows). Truncating before insight generation.", rawData.size());
+				rawDataString = rawData.subList(0, 50).toString() + "\n\n[TRUNCATED: Showing first 50 rows only]";
+			} else {
+				rawDataString = rawData.toString();
+			}
 
-                rawDataString = rawData.subList(0, 50).toString()
-                        + "\n\n[TRUNCATED: Showing first 50 rows only]";
-            } else {
-                rawDataString = rawData.toString();
-            }
-
-            if (rawDataString.length() > 15000) {
-                rawDataString = rawDataString.substring(0, 15000)
-                        + "\n\n[DATA TRUNCATED DUE TO SIZE]";
-            }
-            // Build Insight Prompt
-            String mergedInsightPrompt = """
+			if (rawDataString.length() > 15000) {
+				rawDataString = rawDataString.substring(0, 15000) + "\n\n[DATA TRUNCATED DUE TO SIZE]";
+			}
+			// Build Insight Prompt
+			String mergedInsightPrompt =
+				"""
 %s
 
 USER QUESTION:
 %s
 """.formatted(
-                    INSIGHT_SYSTEM_PROMPT.replace("{raw_data}", rawDataString),
-                    userQuestion
-            );
+						INSIGHT_SYSTEM_PROMPT.replace("{raw_data}", rawDataString),
+						userQuestion
+					);
 
-            var promptSpec = chatClient.prompt()
-                    .user(mergedInsightPrompt);
+			var promptSpec = chatClient.prompt().user(mergedInsightPrompt);
 
-            // DYNAMIC MODEL OVERRIDE
-            if (requestedModel != null && !requestedModel.trim().isEmpty()) {
-                promptSpec.options(OpenAiChatOptions.builder().model(requestedModel).build());
-            }
+			// DYNAMIC MODEL OVERRIDE
+			if (requestedModel != null && !requestedModel.trim().isEmpty()) {
+				promptSpec.options(OpenAiChatOptions.builder().model(requestedModel).build());
+			}
 
-            String insightResponse = promptSpec.call().content();
-            logger.info("Insight generation complete.");
+			String insightResponse = promptSpec.call().content();
+			logger.info("Insight generation complete.");
 
-            if (cacheEnabled) {
-                saveToCache(userQuestion, insightResponse, rawData.toString());
-            }
+			if (cacheEnabled) {
+				saveToCache(userQuestion, insightResponse, rawData.toString());
+			}
 
-            return Map.of(
-                    "agent", "INSIGHT_AGENT",
-                    "question", userQuestion,
-                    "response", insightResponse,
-                    "rawData", rawData, // Maintained as object for JSON serialization
-                    "source", "LLM-RAG",
-                    "modelUsed", targetModel
-            );
+			return Map.of(
+				"agent",
+				"INSIGHT_AGENT",
+				"question",
+				userQuestion,
+				"response",
+				insightResponse,
+				"rawData",
+				rawData, // Maintained as object for JSON serialization
+				"source",
+				"LLM-RAG",
+				"modelUsed",
+				targetModel
+			);
+		} catch (Exception e) {
+			logger.error("Insight Analysis failed: ", e);
+			return Map.of("error", "Analysis failed", "details", e.getMessage());
+		}
+	}
 
-        } catch (Exception e) {
-            logger.error("Insight Analysis failed: ", e);
-            return Map.of("error", "Analysis failed", "details", e.getMessage());
-        }
-    }
+	private void saveToCache(String userQuestion, String insightResponse, String rawResponse) {
+		logRepository.save(new QueryLog(userQuestion, insightResponse, rawResponse));
+	}
 
-    private void saveToCache(String userQuestion, String insightResponse, String rawResponse) {
-        logRepository.save(new QueryLog(userQuestion, insightResponse, rawResponse));
-    }
+	public List<Map<String, Object>> fetchRawDataOnly(String userQuestion, String requestedModel) {
+		logger.info("NLQ Agent fetching raw data for Insight Agent...");
+		try {
+			List<Document> similarDocuments = vectorStore.similaritySearch(
+				SearchRequest.builder().query(userQuestion).topK(2).build()
+			);
+			String schemaContext = similarDocuments.stream().map(Document::getText).collect(Collectors.joining("\n"));
 
-
-    public List<Map<String, Object>> fetchRawDataOnly(String userQuestion, String requestedModel) {
-        logger.info("NLQ Agent fetching raw data for Insight Agent...");
-        try {
-            List<Document> similarDocuments = vectorStore.similaritySearch(
-                    SearchRequest.builder()
-                            .query(userQuestion)
-                            .topK(2)
-                            .build()
-            );
-            String schemaContext = similarDocuments.stream()
-                    .map(Document::getText)
-                    .collect(Collectors.joining("\n"));
-
-            String mergedSqlPrompt = """
+			String mergedSqlPrompt =
+				"""
 %s
 
 USER QUESTION:
 %s
 """.formatted(
-                    SYSTEM_PROMPT.replace("{schema_context}", schemaContext),
-                    userQuestion
-            );
+						SYSTEM_PROMPT.replace("{schema_context}", schemaContext),
+						userQuestion
+					);
 
-            var sqlPromptSpec = chatClient.prompt()
-                    .user(mergedSqlPrompt);
+			var sqlPromptSpec = chatClient.prompt().user(mergedSqlPrompt);
 
-            // DYNAMIC MODEL OVERRIDE
-            if (requestedModel != null && !requestedModel.trim().isEmpty()) {
-                sqlPromptSpec.options(OpenAiChatOptions.builder().model(requestedModel).build());
-            }
+			// DYNAMIC MODEL OVERRIDE
+			if (requestedModel != null && !requestedModel.trim().isEmpty()) {
+				sqlPromptSpec.options(OpenAiChatOptions.builder().model(requestedModel).build());
+			}
 
-            String rawSqlResponse = sqlPromptSpec.call().content();
-            String cleanSql = cleanSqlOutput(rawSqlResponse);
-            logger.info("Generated Insight SQL:\n---\n{}\n---", cleanSql);
+			String rawSqlResponse = sqlPromptSpec.call().content();
+			String cleanSql = cleanSqlOutput(rawSqlResponse);
+			logger.info("Generated Insight SQL:\n---\n{}\n---", cleanSql);
 
-            return sqlExecutor.executeReadOnlyQuery(cleanSql);
+			return sqlExecutor.executeReadOnlyQuery(cleanSql);
+		} catch (Exception e) {
+			logger.error("Error fetching raw data for insight: ", e);
+			throw new RuntimeException("Failed to fetch raw data for analysis.");
+		}
+	}
 
-        } catch (Exception e) {
-            logger.error("Error fetching raw data for insight: ", e);
-            throw new RuntimeException("Failed to fetch raw data for analysis.");
-        }
-    }
+	private String cleanSqlOutput(String sql) {
+		if (sql == null) {
+			return "";
+		}
 
-    private String cleanSqlOutput(String sql) {
+		sql = sql.replaceAll("```sql|```", "").trim();
 
-        if (sql == null) {
-            return "";
-        }
+		// Remove accidental multi-statement outputs
+		int firstSemicolon = sql.indexOf(";");
 
-        sql = sql.replaceAll("```sql|```", "").trim();
+		if (firstSemicolon != -1) {
+			sql = sql.substring(0, firstSemicolon + 1);
+		}
 
-        // Remove accidental multi-statement outputs
-        int firstSemicolon = sql.indexOf(";");
+		// Remove inline comments
+		sql = sql.replaceAll("--.*", "").trim();
 
-        if (firstSemicolon != -1) {
-            sql = sql.substring(0, firstSemicolon + 1);
-        }
-
-        // Remove inline comments
-        sql = sql.replaceAll("--.*", "").trim();
-
-        return sql;
-    }
+		return sql;
+	}
 }
