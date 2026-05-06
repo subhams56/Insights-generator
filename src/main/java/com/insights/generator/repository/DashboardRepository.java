@@ -71,4 +71,19 @@ public class DashboardRepository {
             """;
         return jdbcTemplate.queryForList(sql);
     }
+
+    // 5. NEW: Carrier Performance Breakdown
+    public List<Map<String, Object>> getCarrierPerformance() {
+        String sql = """
+            SELECT 
+                carrier,
+                ROUND(AVG(quality_score), 2) AS avg_quality_score,
+                ROUND(AVG(dropped_calls), 2) AS avg_dropped_calls,
+                ROUND(AVG(download_speed_mbps), 2) AS avg_download_speed
+            FROM refined_network_metrics
+            GROUP BY carrier
+            ORDER BY avg_quality_score DESC
+            """;
+        return jdbcTemplate.queryForList(sql);
+    }
 }
