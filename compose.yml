@@ -9,3 +9,61 @@ services:
       - "org.springframework.boot.service-connection=postgres"
     ports:
       - '5432:5432'
+
+
+
+
+
+#services:
+#
+#  kafka:
+#    image: apache/kafka:3.7.0
+#    container_name: telecom-kafka
+#    hostname: kafka
+#
+#    ports:
+#      - "29092:29092"
+#
+#    environment:
+#      # KRaft Mode
+#      KAFKA_NODE_ID: 1
+#      KAFKA_PROCESS_ROLES: broker,controller
+#
+#      # Listeners
+#      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:29092
+#
+#      # Advertised listeners
+#      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+#
+#      # Listener mapping
+#      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+#
+#      # Internal broker communication
+#      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+#
+#      # Controller
+#      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+#      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+#
+#      # Single-node safe settings
+#      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+#
+#    volumes:
+#      - kafka_data:/tmp/kraft-combined-logs
+#
+#  kafka-ui:
+#    image: provectuslabs/kafka-ui:latest
+#    container_name: telecom-kafka-ui
+#
+#    ports:
+#      - "8085:8080"
+#
+#    environment:
+#      KAFKA_CLUSTERS_0_NAME: telecom-cluster
+#      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+#
+#    depends_on:
+#      - kafka
+#
+#volumes:
+#  kafka_data:
