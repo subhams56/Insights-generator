@@ -7,7 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
+//import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,38 +35,109 @@ public class InsightAgent {
     private boolean cacheEnabled;
 
     private final String SYSTEM_PROMPT = """
-    You are a PostgreSQL expert for a US-based 5G Telecom dataset.
-    
-    SCHEMA CONTEXT:
-    {schema_context}
+You are a PostgreSQL expert for a US-based 5G Telecom analytics dataset.
 
-    CRITICAL RULES:
-    1. The dataset contains HISTORICAL data spanning from JUNE 2024 to MAY 2025. 
-    2. ALWAYS return a valid SQL SELECT statement.
-    3. STRICT SCHEMA ADHERENCE: You MUST ONLY use the exact column names provided in the SCHEMA CONTEXT. DO NOT invent or assume column names like 'record_date' or 'latency_ms'. If it is not in the context, do not query it.
-    4. Use COALESCE(metric, 0) to avoid nulls.
-    5. Only return the SQL code, no explanations.
-    """;
+SCHEMA CONTEXT:
+{schema_context}
+
+CRITICAL RULES:
+1. The dataset contains HISTORICAL telecom data spanning from JUNE 2024 to MAY 2025.
+
+2. ALWAYS return EXACTLY ONE valid PostgreSQL SELECT statement.
+
+3. STRICT SCHEMA ADHERENCE:
+   - You MUST ONLY use exact column names from the SCHEMA CONTEXT.
+   - NEVER invent columns.
+   - NEVER assume columns exist.
+   - If a field is missing from schema context, do not query it.
+
+4. ONLY generate READ-ONLY SQL:
+   - SELECT statements only.
+   - NEVER use INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE.
+
+5. NEVER generate multiple SQL statements.
+
+6. NEVER repeat the query.
+
+7. NEVER explain the SQL.
+
+8. NEVER wrap SQL in markdown.
+
+9. ALWAYS use PostgreSQL-compatible syntax.
+
+10. PostgreSQL does NOT allow SELECT aliases inside HAVING clauses.
+    Repeat the full aggregate expression instead.
+
+11. Use COALESCE(metric, 0) where numeric values may be null.
+
+12. ALWAYS include a LIMIT clause:
+    - Use LIMIT 100 by default.
+    - Use LIMIT 20 for broad analytical questions.
+    - Only omit LIMIT if the user explicitly requests ALL records.
+
+13. For aggregation queries:
+    - Prefer GROUP BY with aggregate functions.
+    - Avoid returning massive raw datasets.
+
+14. Prefer summarized analytical queries over raw telemetry dumps.
+
+15. For comparisons involving multiple values:
+    - Prefer IN (...) instead of repetitive OR conditions.
+
+16. RETURN ONLY RAW SQL. NO COMMENTS. NO EXPLANATION. NO PREFIX TEXT.
+""";
+
 
     private static final String INSIGHT_SYSTEM_PROMPT = """
-            You are a Senior 5G Telecom Data Analyst for a major US carrier. 
-            Your job is to take raw, structured database results and transform them into an executive-friendly business insight.
-            
-            Guidelines:
-            1. DO NOT mention SQL, databases, or JSON formatting.
-            2. FOCUS ON BUSINESS VALUE: Look for correlations. For example, does bad weather correlate with dropped calls on mmWave bands? Do rural areas have higher latency?
-            3. FORMATTING: Use Markdown. Use bolding for key metrics (e.g., **15.2 Mbps**). Use bullet points if comparing multiple items.
-            4. TONE: Professional, confident, and analytical.
-            5. If the raw data is empty, state: "There is no data available for this specific query in the current reporting period."
-            
-            RAW DATA TO ANALYZE:
-            {raw_data}
-            """;
+You are a Senior US Telecom Network Data Analyst.
+
+RAW DATA:
+{raw_data}
+
+INSTRUCTIONS:
+1. Transform the raw data into executive-friendly telecom insights.
+
+2. Keep the response under 10 sentences.
+
+3. Focus on:
+   - trends
+   - anomalies
+   - correlations
+   - performance patterns
+   - business/network impact
+
+4. NEVER repeat the full dataset.
+
+5. NEVER dump raw rows unnecessarily.
+
+6. Summarize statistically whenever possible.
+
+7. Use concise Markdown formatting:
+   - bullets
+   - bold metrics
+   - short sections
+
+8. NEVER mention SQL, databases, JSON, or technical backend details.
+
+9. If data is empty:
+   respond with:
+   "There is no data available for this specific query in the current reporting period."
+
+10. Prioritize telecom-relevant reasoning:
+   - latency
+   - dropped calls
+   - weather impact
+   - carrier performance
+   - device-specific degradation
+   - network band behavior
+
+11. Be concise, professional, analytical, and executive-friendly.
+""";
 
     public InsightAgent(ChatClient.Builder chatClientBuilder,
                         NLQAgent nlqAgent,
                         QueryLogRepository logRepository,
-                        @Value("${spring.ai.google.genai.chat.options.model}") String model, VectorStore vectorStore, SafeSqlExecutor sqlExecutor) {
+                        @Value("${spring.ai.openai.chat.options.model}") String model, VectorStore vectorStore, SafeSqlExecutor sqlExecutor) {
 
         this.logRepository = logRepository;
         this.nlqAgent = nlqAgent;
@@ -73,7 +145,7 @@ public class InsightAgent {
         this.sqlExecutor = sqlExecutor;
         this.defaultModel = model;
 
-        GoogleGenAiChatOptions options = GoogleGenAiChatOptions.builder().build();
+        OpenAiChatOptions options = OpenAiChatOptions.builder().build();
         options.setModel(model);
 
         this.chatClient = chatClientBuilder
@@ -115,14 +187,38 @@ public class InsightAgent {
                 );
             }
 
+            String rawDataString;
+
+            if (rawData.size() > 50) {
+                logger.warn("Large dataset detected ({} rows). Truncating before insight generation.", rawData.size());
+
+                rawDataString = rawData.subList(0, 50).toString()
+                        + "\n\n[TRUNCATED: Showing first 50 rows only]";
+            } else {
+                rawDataString = rawData.toString();
+            }
+
+            if (rawDataString.length() > 15000) {
+                rawDataString = rawDataString.substring(0, 15000)
+                        + "\n\n[DATA TRUNCATED DUE TO SIZE]";
+            }
             // Build Insight Prompt
+            String mergedInsightPrompt = """
+%s
+
+USER QUESTION:
+%s
+""".formatted(
+                    INSIGHT_SYSTEM_PROMPT.replace("{raw_data}", rawDataString),
+                    userQuestion
+            );
+
             var promptSpec = chatClient.prompt()
-                    .system(s -> s.text(INSIGHT_SYSTEM_PROMPT).param("raw_data", rawData.toString()))
-                    .user(userQuestion);
+                    .user(mergedInsightPrompt);
 
             // DYNAMIC MODEL OVERRIDE
             if (requestedModel != null && !requestedModel.trim().isEmpty()) {
-                promptSpec.options(GoogleGenAiChatOptions.builder().model(requestedModel).build());
+                promptSpec.options(OpenAiChatOptions.builder().model(requestedModel).build());
             }
 
             String insightResponse = promptSpec.call().content();
@@ -165,17 +261,27 @@ public class InsightAgent {
                     .map(Document::getText)
                     .collect(Collectors.joining("\n"));
 
+            String mergedSqlPrompt = """
+%s
+
+USER QUESTION:
+%s
+""".formatted(
+                    SYSTEM_PROMPT.replace("{schema_context}", schemaContext),
+                    userQuestion
+            );
+
             var sqlPromptSpec = chatClient.prompt()
-                    .system(s -> s.text(SYSTEM_PROMPT).param("schema_context", schemaContext))
-                    .user(userQuestion);
+                    .user(mergedSqlPrompt);
 
             // DYNAMIC MODEL OVERRIDE
             if (requestedModel != null && !requestedModel.trim().isEmpty()) {
-                sqlPromptSpec.options(GoogleGenAiChatOptions.builder().model(requestedModel).build());
+                sqlPromptSpec.options(OpenAiChatOptions.builder().model(requestedModel).build());
             }
 
             String rawSqlResponse = sqlPromptSpec.call().content();
             String cleanSql = cleanSqlOutput(rawSqlResponse);
+            logger.info("Generated Insight SQL:\n---\n{}\n---", cleanSql);
 
             return sqlExecutor.executeReadOnlyQuery(cleanSql);
 
@@ -186,7 +292,23 @@ public class InsightAgent {
     }
 
     private String cleanSqlOutput(String sql) {
-        if (sql == null) return "";
-        return sql.replaceAll("```sql|```", "").trim();
+
+        if (sql == null) {
+            return "";
+        }
+
+        sql = sql.replaceAll("```sql|```", "").trim();
+
+        // Remove accidental multi-statement outputs
+        int firstSemicolon = sql.indexOf(";");
+
+        if (firstSemicolon != -1) {
+            sql = sql.substring(0, firstSemicolon + 1);
+        }
+
+        // Remove inline comments
+        sql = sql.replaceAll("--.*", "").trim();
+
+        return sql;
     }
 }
